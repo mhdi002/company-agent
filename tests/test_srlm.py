@@ -259,3 +259,22 @@ def test_engine_with_template_policy_on_fixture(tmp_logs):
     pages = {u: html_to_text(h) for u, h in company_pages(c).items() if not u.endswith("robots.txt")}
     d = SRLMEngine(TemplatePolicy(), len, engine_cfg(K=6)).run(field_task(c["domain"], pages))
     assert d.verified and d.output["field"] == "logistics" and d.output["country"] == "United Kingdom"
+
+
+def test_sandbox_worker_crash_recovers():
+    import os
+    import signal
+    with Sandbox({"context": "x"}, SB_CFG) as sb:
+        assert sb.execute("y = 1").error is None
+        os.kill(sb.proc.pid, signal.SIGKILL)          # failure injection: REPL process dies
+        r = sb.execute("print('after')")
+        assert r.error and "state was reset" in r.error
+        assert sb.execute("print('ok')").stdout.strip() == "ok"
+
+
+def test_corrupt_state_file_recovered(tmp_path):
+    from agent.memory import StateStore
+    p = tmp_path / "state.json"
+    p.write_text("{not json")
+    st = StateStore(p)
+    assert st.data["status"] == "idle" and (tmp_path / "state.corrupt.json").exists()

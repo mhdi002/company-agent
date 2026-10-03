@@ -75,7 +75,10 @@ class Sandbox:
     def execute(self, code: str) -> ExecResult:
         t0 = time.time()
         if self.proc is None or self.proc.poll() is not None:
-            self._start()
+            self.violations.append("worker exited")
+            self._restart()
+            return ExecResult(error="REPL worker had exited; state was reset — recompute any variables you need",
+                              seconds=time.time() - t0, violation="worker exited")
         assert self.proc and self.proc.stdin
         try:
             self.proc.stdin.write(json.dumps({"type": "exec", "code": code}) + "\n")

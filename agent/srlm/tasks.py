@@ -150,8 +150,7 @@ def build_corpus(pages: dict[str, str], facts: list[dict], projects: list[dict])
         if key not in seen:
             seen.add(key)
             corpus.append({"id": f["source_id"], "url": f.get("url", ""), "text": f["fact"]})
-    for i, p in enumerate(projects):
-        corpus.append({"id": f"project:{i + 1}", "url": "", "text": f"{p['title']}. {p.get('rationale', '')}"})
+    # Selected projects are not public sources: their rationale facts are already cited via `facts`.
     # merge texts of identical ids (several facts from the same source)
     merged: dict[str, dict] = {}
     for d in corpus:

@@ -1,0 +1,113 @@
+# ProposalAgent
+
+An app with a **Start** button. An agent finds company websites, works out each company's field,
+researches that field (existing work, trends, gaps), selects the projects the company most likely needs,
+writes a complete project proposal as a `.docx`, and sends it with a JSON record and logs to a
+Telegram bot.
+
+The brain is **our own decoder-only transformer** (1.0 B parameters in the `1b` preset), trained from
+random initialisation with our own BPE tokenizer on cleaned public datasets. No pretrained weights and
+no external LLM calls. Every decision goes through **SRLM** (Self-Reflective Program Search): context
+lives in a sandboxed Python REPL, the model writes K candidate programs that read it, and the winner
+is chosen by self-consistency, verbalized confidence and trace length.
+
+![Dashboard](docs/ui_dashboard.png)
+
+* Architecture, data flow and training budget: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+* Decisions: [`docs/DECISIONS.md`](docs/DECISIONS.md) · Phase reports and metrics: [`docs/PHASE_REPORTS.md`](docs/PHASE_REPORTS.md)
+* Datasets and licenses: [`data/MANIFEST.md`](data/MANIFEST.md) · Cleaning report: [`data/reports/cleaning_report.md`](data/reports/cleaning_report.md)
+
+## 1. Setup
+
+```bash
+python3.11 -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt            # CUDA machines: install the matching torch wheel first
+npm install                                # docx-js for Word output (optional; python-docx fallback)
+cp .env.example .env                       # add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
+python -m pytest                           # ~120 tests, all offline (network tests: PA_NETWORK_TESTS=1)
+```
+
+Configuration lives in `config.yaml`. Override any key with `PA__SECTION__KEY=value`, or on the UI
+settings page (saved to `config.override.yaml`). Secrets only go in `.env`.
+
+## 2. Run the app
+
+```bash
+python -m app                              # http://127.0.0.1:8000 — Start / Stop / Resume, to-do, logs, settings
+python -m agent run                        # headless run with the providers in config.yaml
+python -m agent run --offline --policy template --companies 8   # no network: bundled fictional companies
+```
+
+Real runs use DuckDuckGo search, company websites (robots.txt respected, 2 s per-host delay, cache) and
+Wikipedia for field research. Providers are pluggable (`search.provider: duckduckgo | seedfile | offline`).
+
+`agent.policy: model` uses the checkpoint at `agent.checkpoint`. Until that checkpoint exists, the
+agent falls back to the deterministic `template` policy and logs that it did. This is the same
+programmatic generator that produces the training traces.
+
+## 3. Data → tokenizer → pretraining → agent SFT
+
+```bash
+# 1. Download public datasets (resumable, checksummed; writes data/MANIFEST.md)
+python -m data.download --groups general business agentic --max-docs 20000000
+# 2. Clean: normalize → language ID → quality + perplexity → MinHash dedup → PII/toxicity → decontamination
+python -m data.clean.pipeline --workers 32
+# 3. Tokenizer (48k BPE + agent special tokens) and stage 7 shards
+python -m tokenizer.train
+python -m data.clean.shard
+# 4. Pretrain the 1B model (8K context). Resume-safe: re-run with --resume after any interruption.
+torchrun --nproc_per_node 8 -m training.pretrain --preset 1b --resume
+# 5. Synthetic SRLM traces with calibrated confidence, then agent-format SFT
+python -m agent.synth.generate --companies 20000 --k 4
+python -m training.sft --init training/checkpoints/pretrain/latest.pt
+# 6. Evaluate: step format, ECE, field accuracy; ablations
+python -m training.eval --checkpoint training/checkpoints/sft/latest.pt
+python -m training.ablation --policy model --k 8
+```
+
+Budget for the full 1B run: 20 B tokens, 76.3 k steps of 262 k tokens. That is about 6 days on
+1×H100, 18 days on 1×A100, or 2.5 days on 8×A100. Details are in `docs/ARCHITECTURE.md` §6.
+
+The whole pipeline on CPU in about 15 minutes (tiny 6.9 M-parameter preset, bundled sample corpus):
+
+```bash
+./scripts/smoke_pipeline.sh
+```
+
+## 4. SRLM switches (`config.yaml → srlm`)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `K` | 8 | candidate programs per decision unit (run in parallel) |
+| `temperature`, `top_p` | 0.8, 0.95 | sampling diversity |
+| `max_steps`, `step_timeout_s` | 30, 60 | per-candidate step and per-step time limits |
+| `use_self_consistency` / `use_verbalized_confidence` / `use_trace_length` | true | ablation switches |
+| `use_subcalls` | false | optional recursive `sub_call` (ablation only) |
+| `direct_baseline` | false | single program, no selection |
+| `min_score`, `min_prob`, `max_retries` | -400, 0.25, 1 | retry, then "Not verified" |
+| `set_agreement_threshold`, `agreement_threshold` | 0.8, 0.6 | agreement for list and free-text outputs |
+
+## 5. Outputs and logs
+
+* `outputs/proposals/<date>_<domain>.docx`: cover, table of contents, 17 sections, tables, page X of Y.
+  Every factual sentence cites `[S#]`; anything unsupported says "Not verified".
+* `outputs/records/<date>_<domain>.json`: profile, evidence with URLs, projects, sections, SRLM decision summaries.
+* `logs/agent.log`, `tools.log`, `training.log`, `errors.log`: human-readable, one line per event
+  (`timestamp | run_id | company | step | tool | status | duration | details`), each with a `.jsonl` twin.
+* `logs/srlm.jsonl`: every decision unit (all candidates' code, outputs, confidences, VC, Len, s(p),
+  prob(a), consistent set, selection, retries, wall-clock) and every model prompt/output step.
+* `outputs/state.json`: persistent run state (crash recovery and resume).
+
+## 6. Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `brain: template` in the UI | No SFT checkpoint at `agent.checkpoint`: train one (§3) or point the setting at it. |
+| Telegram counter stays 0 | Set `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` (settings page or `.env`) and message the bot once first. `logs/tools.log` shows `skipped`/errors. |
+| Search finds nothing | DuckDuckGo may rate-limit: lower the request rate, use `search.provider: seedfile` with your own list, or check `errors.log`. |
+| Docx falls back to python-docx | Run `npm install` (needs Node 18+). Both backends produce the same structure. |
+| `HTTP 403` / `CONNECT tunnel failed` | Your network or proxy blocks the host; allow it or use offline providers. |
+| Stopped or crashed mid-run | Press **Start** (Resume): finished steps are reused from `outputs/cache/work/<domain>/`. **Reset** starts fresh. |
+| Daily limit reached | `agent.daily_limit` counts companies per calendar day; raise it or wait. |
+| Sandbox `SandboxViolation` in logs | A program tried a blocked import or attribute. It is expected in candidate programs and logged, not fatal. |
+| Out of GPU memory | Lower `training.micro_batch_size`, raise `grad_accum_steps`, keep `grad_checkpointing: true`, or train at `--seq-len 2048` first. |

@@ -138,7 +138,8 @@ class SRLMEngine:
 
     def _summaries(self, task: DecisionTask, cands: list[CandidateTrace]) -> list[CandidateSummary]:
         outs = [c.output if c.valid else None for c in cands]
-        ids = cluster(outs, task.kind, float(self.cfg.get("agreement_threshold", 0.6)),
+        key = "set_agreement_threshold" if task.kind == "set" else "agreement_threshold"
+        ids = cluster(outs, task.kind, float(self.cfg.get(key, self.cfg.get("agreement_threshold", 0.6))),
                       self.cfg.get("free_text_agreement", "keyfacts"), task.label_fn)
         return [CandidateSummary(index=i, output=c.output, valid=c.valid,
                                  confidences=[s.confidence for s in c.steps], step_tokens=[s.tokens for s in c.steps],

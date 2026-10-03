@@ -101,15 +101,14 @@ FIELD = [
 # ============================================================================ evidence extraction
 EVIDENCE = [
     Strategy("field_docs", [
-        lambda h: ("Keep the evidence documents that match the company's field and services.",
-                   'q = profile["field"] + " " + " ".join(profile.get("services", []))\n'
-                   'rel = [e for e in evidence if overlap(e.get("title", "") + " " + e["text"][:600], q) > 0.02]\n'
+        lambda h: ("Keep the evidence documents whose own field matches the company's field.",
+                   'rel = [e for e in evidence if extract_fields(e.get("title", "") + " " + e["text"])["field"] == profile["field"]]\n'
                    'print([(e["id"], e.get("title", "")) for e in rel])', 72.0),
         lambda h: ("Quote every sentence of the relevant documents as a fact with its source.",
                    'facts = []\nfor e in rel:\n    for s in sentences(e["text"]):\n'
                    '        facts.append({"fact": s["text"], "source_id": e["id"], "url": e["url"]})\n'
                    'print(len(facts))\nprint(facts[:2])', 75.0),
-        lambda h: ("Return the quoted facts.", "FINAL(facts[:10])",
+        lambda h: ("Return the quoted facts.", "FINAL(facts[:12])",
                    _c(_last(h), 84.0, 15.0, ("\n0\n", "[error]", "[]"))),
     ], 2.0),
     Strategy("overlap", [
@@ -127,12 +126,13 @@ EVIDENCE = [
     Strategy("bm25", [
         lambda h: ("Retrieve the evidence chunks most relevant to the company profile.",
                    'q = profile["field"] + " " + " ".join(profile.get("services", []))\n'
-                   'hits = bm25(q, k=6, var="evidence")\nfor h in hits:\n    print(h["source"], h["score"], h["text"][:100])',
+                   'same = [e for e in evidence if extract_fields(e["text"])["field"] == profile["field"]] or evidence\n'
+                   'hits = bm25(q, k=6, var=same)\nfor h in hits:\n    print(h["source"], h["score"], h["text"][:100])',
                    70.0),
         lambda h: ("Quote the sentences of the retrieved chunks.",
                    'urls = {e["id"]: e["url"] for e in evidence}\n'
                    'facts = [{"fact": s["text"], "source_id": h["source"], "url": urls[h["source"]]} '
-                   'for h in hits for s in sentences(h["text"])]\nFINAL(facts[:10])',
+                   'for h in hits for s in sentences(h["text"])]\nFINAL(facts[:12])',
                    _c(_last(h), 76.0, 20.0, ("[]", "[error]"))),
     ]),
     Strategy("paraphrase", [
@@ -148,7 +148,7 @@ EVIDENCE = [
 ]
 
 # ============================================================================ project selection
-GAP_PATTERN = r'(?i)\\b(few|still|limited|bottleneck|barrier|remains|lack|manual|spreadsheets|whiteboards)\\b'
+GAP_PATTERN = r'(?i)\b(few|still|limited|bottleneck|barrier|remains|lack|manual|spreadsheets|whiteboards)\b'
 PROJECTS = [
     Strategy("gaps_first", [
         lambda h: ("Separate gap statements (unsolved problems) from general trends.",

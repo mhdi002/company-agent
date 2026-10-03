@@ -19,7 +19,7 @@ FACT_SHEET_SECTIONS = [s for s in PROPOSAL_SECTIONS if s not in MECHANICAL_SECTI
 SECTION_QUERIES: dict[str, str] = {
     "Executive Summary": "company offers services customers opportunity project",
     "Company Overview": "founded based company employees customers services products offers",
-    "Field and Market Analysis": "trend market increasingly expected growth adoption standards demand",
+    "Field and Market Analysis": "trend market increasingly expected growth adoption standards demand increases reduces widely already",
     "Problem/Opportunity Analysis": "few limited still bottleneck barrier remains manual spreadsheets lack",
     "Proposed Project(s)": "project automated forecasting integration monitoring platform scheduling",
     "Objectives": "reduce improve increase savings efficiency downtime waste",

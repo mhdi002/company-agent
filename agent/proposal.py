@@ -123,9 +123,15 @@ class TemplateWriter:
                         ["Size", profile.get("size") or "not stated"],
                         ["Services", "; ".join(profile.get("services", [])[:5]) or NV]]})
             elif title == "Field and Market Analysis":
-                sec(title, [f"Public sources on {field} describe the following trends and existing work:"], f)
+                if f:
+                    sec(title, [f"Public sources on {field} describe the following trends and existing work:"], f)
+                else:
+                    nv(title)
             elif title == "Problem/Opportunity Analysis":
-                sec(title, ["The evidence points to these unsolved problems and opportunities:"], f)
+                if f:
+                    sec(title, ["The evidence points to these unsolved problems and opportunities:"], f)
+                else:
+                    nv(title)
             elif title == "Proposed Project(s)":
                 rows = [[str(i + 1), p["title"], _sentence(p.get("rationale", "")) + " [" + ", ".join(
                     book.cite(e, urls.get(e, "")) for e in p.get("evidence_ids", [])) + "]"]

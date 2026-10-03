@@ -17,8 +17,9 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip)
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def tmp_logs(tmp_path):
+    """Every test logs into its own temp dir (never into the repo's logs/)."""
     from core import logging as plog
     plog.configure(tmp_path / "logs", run_id="test")
     return tmp_path / "logs"

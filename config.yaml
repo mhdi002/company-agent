@@ -98,7 +98,8 @@ srlm:
   use_subcalls: false        # ablation only; OFF by default
   direct_baseline: false     # true = plain single-pass run, no SRLM
   free_text_agreement: keyfacts   # keyfacts | embedding
-  agreement_threshold: 0.6
+  agreement_threshold: 0.6        # free-text agreement threshold
+  set_agreement_threshold: 0.8    # structured lists (facts, fact sheets): soft-Jaccard threshold
   min_score: -400.0          # retry if best s(p) below this ...
   min_prob: 0.25             # ... AND prob(a_hat) below this
   max_retries: 1

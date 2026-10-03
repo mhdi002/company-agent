@@ -1,0 +1,141 @@
+{
+  "policy": "template",
+  "targets": {
+    "ece_targets": 0.0452,
+    "curve": [
+      {
+        "bin": "0.0-0.1",
+        "n": 36,
+        "mean_conf": 0.02,
+        "accuracy": 0.0
+      },
+      {
+        "bin": "0.1-0.2",
+        "n": 11,
+        "mean_conf": 0.1182,
+        "accuracy": 0.6606
+      },
+      {
+        "bin": "0.2-0.3",
+        "n": 3,
+        "mean_conf": 0.3,
+        "accuracy": 0.3
+      },
+      {
+        "bin": "0.4-0.5",
+        "n": 2,
+        "mean_conf": 0.4444,
+        "accuracy": 0.4444
+      },
+      {
+        "bin": "0.5-0.6",
+        "n": 3,
+        "mean_conf": 0.5333,
+        "accuracy": 0.5333
+      },
+      {
+        "bin": "0.6-0.7",
+        "n": 13,
+        "mean_conf": 0.669,
+        "accuracy": 0.6691
+      },
+      {
+        "bin": "0.7-0.8",
+        "n": 8,
+        "mean_conf": 0.7411,
+        "accuracy": 0.7411
+      },
+      {
+        "bin": "0.8-0.9",
+        "n": 3,
+        "mean_conf": 0.8,
+        "accuracy": 0.8
+      },
+      {
+        "bin": "0.9-1.0",
+        "n": 121,
+        "mean_conf": 0.9786,
+        "accuracy": 0.9981
+      }
+    ]
+  },
+  "srlm_field": {
+    "field_accuracy": 1.0,
+    "n": 12,
+    "seconds": 0.8,
+    "rows": [
+      {
+        "domain": "nordwind-solar.example",
+        "truth": "renewable energy",
+        "pred": "renewable energy",
+        "status": "selected"
+      },
+      {
+        "domain": "harbourline-logistics.example",
+        "truth": "logistics",
+        "pred": "logistics",
+        "status": "selected"
+      },
+      {
+        "domain": "maplebyte.example",
+        "truth": "software",
+        "pred": "software",
+        "status": "selected"
+      },
+      {
+        "domain": "outback-agritech.example",
+        "truth": "agriculture",
+        "pred": "agriculture",
+        "status": "selected"
+      },
+      {
+        "domain": "polderwerk.example",
+        "truth": "manufacturing",
+        "pred": "manufacturing",
+        "status": "selected"
+      },
+      {
+        "domain": "lioncity-medtech.example",
+        "truth": "healthcare",
+        "pred": "healthcare",
+        "status": "selected"
+      },
+      {
+        "domain": "rheinland-freight.example",
+        "truth": "logistics",
+        "pred": "logistics",
+        "status": "selected"
+      },
+      {
+        "domain": "thamesledger.example",
+        "truth": "finance",
+        "pred": "finance",
+        "status": "selected"
+      },
+      {
+        "domain": "prairiebuild.example",
+        "truth": "construction",
+        "pred": "construction",
+        "status": "selected"
+      },
+      {
+        "domain": "coralcoast-learning.example",
+        "truth": "education",
+        "pred": "education",
+        "status": "low_agreement"
+      },
+      {
+        "domain": "deltafresh.example",
+        "truth": "retail",
+        "pred": "retail",
+        "status": "selected"
+      },
+      {
+        "domain": "merlion-robotics.example",
+        "truth": "manufacturing",
+        "pred": "manufacturing",
+        "status": "selected"
+      }
+    ]
+  }
+}

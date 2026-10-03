@@ -37,7 +37,7 @@ class StateStore:
     @staticmethod
     def fresh() -> dict:
         return {"run_id": None, "status": "idle", "started_at": None, "finished_at": None,
-                "counters": {"found": 0, "processed": 0, "failed": 0, "sent": 0}, "todo": [], "companies": {},
+                "counters": {"found": 0, "processed": 0, "failed": 0, "skipped": 0, "sent": 0}, "todo": [], "companies": {},
                 "processed_domains": [], "daily": {}, "current_company": None}
 
     def save(self) -> None:

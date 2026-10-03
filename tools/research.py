@@ -14,7 +14,6 @@ from core.logging import get_logger
 from tools.http import HttpClient
 
 log = get_logger("tools")
-WIKI_API = "https://en.wikipedia.org/w/api.php"
 
 
 def _clean(text: str, max_chars: int = 4000) -> str:
@@ -26,32 +25,40 @@ def _clean(text: str, max_chars: int = 4000) -> str:
 class WikipediaProvider:
     name = "wikipedia"
 
-    def __init__(self, http: HttpClient):
+    def __init__(self, http: HttpClient, cfg: dict):
         self.http = http
+        self.api = cfg["wikipedia_api"]
+        self.templates = cfg.get("queries") or ["{field} industry"]
+        self.per_query = int(cfg.get("results_per_query", 3))
+        self.max_chars = int(cfg.get("max_chars_per_source", 4000))
 
     def queries(self, field: str, services: list[str]) -> list[str]:
-        q = [f"{field} industry", f"{field} technology trends"]
-        q += [s for s in services[:2]]
-        return q
+        out = []
+        for t in self.templates:
+            if "{service}" in t:
+                out += [t.format(field=field, service=s) for s in services[:2]]
+            else:
+                out.append(t.format(field=field))
+        return out
 
     def research(self, field: str, services: list[str], max_sources: int) -> list[dict]:
         docs, seen = [], set()
         for q in self.queries(field, services):
-            r = self.http.get(WIKI_API, params={"action": "query", "list": "search", "srsearch": q, "srlimit": 3,
+            r = self.http.get(self.api, params={"action": "query", "list": "search", "srsearch": q, "srlimit": self.per_query,
                                                 "format": "json"}, check_robots=False)
             for hit in json.loads(r.text).get("query", {}).get("search", []):
                 title = hit["title"]
                 if title in seen:
                     continue
                 seen.add(title)
-                ex = self.http.get(WIKI_API, params={"action": "query", "prop": "extracts", "explaintext": 1,
+                ex = self.http.get(self.api, params={"action": "query", "prop": "extracts", "explaintext": 1,
                                                      "titles": title, "format": "json", "exsectionformat": "plain"},
                                    check_robots=False)
                 pages = json.loads(ex.text).get("query", {}).get("pages", {})
                 text = next(iter(pages.values()), {}).get("extract", "")
                 if len(text) > 200:
                     docs.append({"url": f"https://en.wikipedia.org/wiki/{title.replace(' ', '_')}", "title": title,
-                                 "text": _clean(text)})
+                                 "text": _clean(text, self.max_chars)})
                 if len(docs) >= max_sources:
                     return docs
         return docs
@@ -73,7 +80,7 @@ class OfflineResearchProvider:
 def make_research_provider(cfg: dict, http: HttpClient):
     name = cfg["research"]["provider"]
     if name == "wikipedia":
-        return WikipediaProvider(http)
+        return WikipediaProvider(http, cfg["research"])
     if name == "offline":
         return OfflineResearchProvider()
     raise ValueError(f"unknown research provider {name!r}")

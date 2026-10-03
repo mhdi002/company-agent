@@ -40,7 +40,9 @@ def _node_env() -> dict | None:
     env = dict(os.environ)
     paths = [str(ROOT / "node_modules")]
     try:
-        paths.append(subprocess.run(["npm", "root", "-g"], capture_output=True, text=True, timeout=20).stdout.strip())
+        npm = shutil.which("npm")
+        if npm:
+            paths.append(subprocess.run([npm, "root", "-g"], capture_output=True, text=True, timeout=20).stdout.strip())
     except (OSError, subprocess.SubprocessError):
         pass
     env["NODE_PATH"] = os.pathsep.join(p for p in paths if p)
@@ -52,14 +54,14 @@ def docxjs_available() -> bool:
     return _node_env() is not None
 
 
-def _write_docxjs(spec: dict, out: Path) -> None:
+def _write_docxjs(spec: dict, out: Path, timeout_s: int = 120) -> None:
     env = _node_env()
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as f:
         json.dump(spec, f, ensure_ascii=False)
         spec_path = f.name
     try:
-        r = subprocess.run(["node", str(ROOT / "tools" / "docx_render.js"), spec_path, str(out)], env=env,
-                           capture_output=True, text=True, timeout=120)
+        r = subprocess.run([shutil.which("node") or "node", str(ROOT / "tools" / "docx_render.js"), spec_path, str(out)], env=env,
+                           capture_output=True, text=True, timeout=timeout_s)
         if r.returncode != 0:
             raise RuntimeError(f"docx-js failed: {r.stderr[-800:]}")
     finally:
@@ -135,7 +137,7 @@ def _write_python_docx(spec: dict, out: Path) -> None:
 
 
 def write_proposal(sections: list[dict], out: Path, title: str, backend: str = "auto", page_size: str = "A4",
-                   company: str | None = None) -> dict:
+                   company: str | None = None, timeout_s: int = 120) -> dict:
     """Render sections to `out`. Returns {"path", "backend", "bytes"}."""
     out.parent.mkdir(parents=True, exist_ok=True)
     spec = {"title": title, "page_size": page_size, "sections": sections}
@@ -145,7 +147,7 @@ def write_proposal(sections: list[dict], out: Path, title: str, backend: str = "
         chosen = "docxjs" if docxjs_available() else "python-docx"
     try:
         if chosen == "docxjs":
-            _write_docxjs(spec, out)
+            _write_docxjs(spec, out, timeout_s)
         else:
             _write_python_docx(spec, out)
     except Exception as e:

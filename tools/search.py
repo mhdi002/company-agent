@@ -1,7 +1,10 @@
 """Find company websites by country and industry. Providers are pluggable.
 
 Providers:
-  duckduckgo  — DuckDuckGo HTML endpoint (free, no key); results filtered to company homepages
+  wikidata    — Wikidata SPARQL (open data, CC0): companies with country (P17), industry (P452) and an
+                official website (P856). Default: free, keyless, and not blocked for server IPs.
+  duckduckgo  — DuckDuckGo HTML endpoint (free, no key); results filtered to company homepages.
+                Datacenter IPs often get a bot challenge, which is reported as SearchBlocked.
   seedfile    — a JSON file of {name, url, country, industry} (open directories exported by the user)
   offline     — the bundled fictional fixture companies (tests / air-gapped runs)
 """
@@ -42,16 +45,76 @@ class SearchProvider(Protocol):
     def search(self, country: str, industry: str, limit: int) -> list[dict]: ...
 
 
-class DuckDuckGoProvider:
-    name = "duckduckgo"
-    ENDPOINT = "https://html.duckduckgo.com/html/"
+class SearchBlocked(Exception):
+    """The search engine answered with a bot challenge instead of results."""
 
-    def __init__(self, http: HttpClient):
+
+class WikidataProvider:
+    name = "wikidata"
+
+    def __init__(self, http: HttpClient, cfg: dict):
         self.http = http
+        self.endpoint = cfg["wikidata_sparql"]
+        self.api = cfg["wikidata_api"]
+        self.qids = dict(cfg.get("country_qids") or {})
+        self.keywords = {k.lower(): v for k, v in (cfg.get("industry_keywords") or {}).items()}
+
+    def _country_qid(self, country: str) -> str | None:
+        if country in self.qids:
+            return self.qids[country]
+        r = self.http.get(self.api, params={
+            "action": "wbsearchentities", "search": country, "language": "en", "type": "item", "format": "json"},
+            check_robots=False)
+        hits = json.loads(r.text).get("search", [])
+        if hits:
+            self.qids[country] = hits[0]["id"]
+        return hits[0]["id"] if hits else None
+
+    def query(self, qid: str, industry: str, limit: int) -> str:
+        kws = self.keywords.get(industry.lower(), [industry.lower()])
+        cond = " || ".join(f'CONTAINS(LCASE(?industryLabel), "{k.replace(chr(34), "")}")' for k in kws)
+        return f"""SELECT DISTINCT ?item ?itemLabel ?website ?industryLabel WHERE {{
+  ?item wdt:P17 wd:{qid}; wdt:P856 ?website; wdt:P452 ?industry.
+  ?industry rdfs:label ?industryLabel. FILTER(LANG(?industryLabel) = "en")
+  FILTER({cond})
+  ?item rdfs:label ?itemLabel. FILTER(LANG(?itemLabel) = "en")
+}} LIMIT {int(limit) * 3}"""
 
     def search(self, country: str, industry: str, limit: int) -> list[dict]:
-        q = f"{industry} company {country} official website"
-        resp = self.http.get(self.ENDPOINT, params={"q": q}, check_robots=False)
+        qid = self._country_qid(country)
+        if not qid:
+            return []
+        r = self.http.get(self.endpoint, params={"query": self.query(qid, industry, limit), "format": "json"},
+                          check_robots=False)
+        out, seen = [], set()
+        for b in json.loads(r.text).get("results", {}).get("bindings", []):
+            url = b["website"]["value"]
+            if not url.startswith("http") or EXCLUDE.search(url):
+                continue
+            d = domain_of(url)
+            if d in seen:
+                continue
+            seen.add(d)
+            out.append({"name": b["itemLabel"]["value"], "url": homepage(url), "domain": d, "country_hint": country,
+                        "industry_hint": industry, "source": self.name, "wikidata": b["item"]["value"]})
+            if len(out) >= limit:
+                break
+        return out
+
+
+class DuckDuckGoProvider:
+    name = "duckduckgo"
+
+    def __init__(self, http: HttpClient, cfg: dict):
+        self.http = http
+        self.endpoint = cfg["duckduckgo_endpoint"]
+        self.template = cfg.get("duckduckgo_query", "{industry} company {country}")
+
+    def search(self, country: str, industry: str, limit: int) -> list[dict]:
+        q = self.template.format(industry=industry, country=country)
+        resp = self.http.get(self.endpoint, params={"q": q}, check_robots=False)
+        if "anomaly" in resp.text and "result__a" not in resp.text:
+            raise SearchBlocked("DuckDuckGo returned a bot challenge; use search.provider: wikidata or seedfile")
         soup = BeautifulSoup(resp.text, "lxml")
         out, seen = [], set()
         for a in soup.select("a.result__a"):
@@ -103,8 +166,10 @@ class OfflineProvider:
 
 def make_provider(cfg: dict, http: HttpClient) -> SearchProvider:
     name = cfg["search"]["provider"]
+    if name == "wikidata":
+        return WikidataProvider(http, cfg["search"])
     if name == "duckduckgo":
-        return DuckDuckGoProvider(http)
+        return DuckDuckGoProvider(http, cfg["search"])
     if name == "seedfile":
         return SeedFileProvider(cfg["search"]["seed_file"])
     if name == "offline":
@@ -114,9 +179,10 @@ def make_provider(cfg: dict, http: HttpClient) -> SearchProvider:
 
 def gather_companies(provider: SearchProvider, countries: list[str], industries: list[str], limit: int,
                      seen_domains: set[str] | None = None, per_query: int = 10) -> list[dict]:
-    """Search every (country, industry) pair; deduplicate by domain; stop at `limit`."""
+    """Search every (country, industry) pair, interleave results round-robin so the run covers many
+    countries and industries, deduplicate by domain, and stop at `limit`."""
     seen = set(seen_domains or ())
-    out: list[dict] = []
+    buckets: list[list[dict]] = []
     for industry in industries:
         for country in countries:
             try:
@@ -124,12 +190,15 @@ def gather_companies(provider: SearchProvider, countries: list[str], industries:
             except Exception as e:  # one failing query never stops the search
                 log.error("search", e, tool=provider.name, details=f"{industry} / {country}: {e}")
                 continue
-            log.event("search", "ok", tool=provider.name, details=f"{industry} / {country}: {len(results)} results")
-            for r in results:
-                if r["domain"] in seen:
-                    continue
-                seen.add(r["domain"])
-                out.append(r)
+            log.event("search", "ok", tool=provider.name,
+                      details={"query": f"{industry} / {country}", "results": [r["domain"] for r in results]})
+            buckets.append(results)
+    out: list[dict] = []
+    for rank in range(max((len(b) for b in buckets), default=0)):
+        for b in buckets:
+            if rank < len(b) and b[rank]["domain"] not in seen:
+                seen.add(b[rank]["domain"])
+                out.append(b[rank])
                 if len(out) >= limit:
                     return out
     return out

@@ -62,6 +62,8 @@ legend{padding:0 6px;font-weight:600}
 .files a{color:var(--accent);text-decoration:none}.files li{padding:4px 0}
 .toast{position:fixed;bottom:16px;right:16px;background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:10px;display:none}
 .hidden{display:none}
+.tg input{width:100%;margin:6px 0 8px}.tg p{margin:6px 0}.tg a{color:var(--accent)}
+.beat{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-right:6px;animation:p 1.2s infinite}
 @media(max-width:600px){details.company summary .muted{display:none}}
 </style>
 </head>
@@ -97,7 +99,13 @@ legend{padding:0 6px;font-weight:600}
           <dt>Current</dt><dd id="current">—</dd>
           <dt>Run id</dt><dd id="runId">—</dd>
           <dt>Today</dt><dd id="today">0 processed</dd>
+          <dt>Heartbeat</dt><dd id="heartbeat">—</dd>
+          <dt>Next run</dt><dd id="nextRun">—</dd>
         </dl>
+      </div>
+      <div class="card" style="margin-top:18px">
+        <h2>Telegram bot</h2>
+        <div id="tgBox"><p class="muted">Loading…</p></div>
       </div>
     </div>
     <div class="card">
@@ -182,6 +190,10 @@ async function refresh() {
     $("cFailed").textContent = s.counters.failed; $("cSent").textContent = s.counters.sent;
     $("current").textContent = s.current_company || "—"; $("runId").textContent = s.run_id || "—";
     $("today").textContent = s.processed_today + " processed";
+    const hb = s.heartbeat && s.heartbeat.last;
+    $("heartbeat").innerHTML = s.running && hb ? `<span class="beat"></span>${esc(hb.slice(11, 19))} UTC` : (hb ? "stopped" : "—");
+    $("nextRun").textContent = s.next_run_at ? s.next_run_at.slice(0, 16).replace("T", " ") + " UTC"
+      : (s.continuous ? "continuous mode on" : "single run");
     $("startBtn").disabled = s.running; $("stopBtn").disabled = !s.running; $("resetBtn").disabled = s.running;
     $("startBtn").textContent = !s.running && ["stopped", "stopping"].includes(s.status) ? "Resume" : "Start";
     if (tab === "dash") renderTodo(s);
@@ -224,7 +236,7 @@ async function loadSettings() {
     for (const [k, v] of Object.entries(vals)) {
       const id = `${sec}.${k}`;
       if (typeof v === "boolean") h += `<label class="chk"><input type="checkbox" name="${id}" ${v ? "checked" : ""}> ${k}</label>`;
-      else if (k === "provider" && sec === "search") h += sel(id, k, v, ["duckduckgo", "seedfile", "offline"]);
+      else if (k === "provider" && sec === "search") h += sel(id, k, v, ["wikidata", "duckduckgo", "seedfile", "offline"]);
       else if (k === "provider" && sec === "research") h += sel(id, k, v, ["wikipedia", "offline"]);
       else if (k === "policy") h += sel(id, k, v, ["model", "template"]);
       else if (k === "backend") h += sel(id, k, v, ["auto", "docxjs", "python-docx"]);
@@ -251,6 +263,36 @@ $("saveBtn").onclick = async (e) => {
   try { await api("/api/settings", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
     toast("Settings saved"); loadSettings(); } catch (err) { toast(err.message); }
 };
+let tgState = null;
+async function loadTelegram() {
+  try { tgState = await api("/api/telegram"); } catch (e) { return; }
+  const t = tgState;
+  let h = '<div class="tg">';
+  if (!t.token_set) {
+    h += `<p class="muted">1. In Telegram, talk to <a href="https://t.me/BotFather" target="_blank">@BotFather</a>, send /newbot, copy the token.<br>2. Paste it here:</p>
+      <input id="tgToken" type="password" placeholder="123456789:AA...">
+      <button class="btn primary" id="tgConnect">Connect bot</button>`;
+  } else if (t.pairing || !t.chat_set) {
+    h += `<p>Bot <b>@${esc(t.bot_username || "?")}</b> verified.</p>
+      <p>Now open <a href="${esc(t.link || "#")}" target="_blank">${esc(t.link || "the bot")}</a> and press <b>Start</b>. This page updates when it is paired.</p>
+      <button class="btn" id="tgDisconnect">Cancel</button>`;
+  } else {
+    h += `<p><span class="beat"></span>Connected: <b>@${esc(t.bot_username || "?")}</b> → ${esc(t.chat_title || "chat")}</p>
+      <p class="muted">Bot commands: /run /stop /status /logs</p>
+      <div class="btns"><button class="btn" id="tgTest">Send test</button><button class="btn" id="tgDisconnect">Disconnect</button></div>`;
+  }
+  if (t.last_error) h += `<p class="err">${esc(t.last_error)}</p>`;
+  h += "</div>";
+  $("tgBox").innerHTML = h;
+  if ($("tgConnect")) $("tgConnect").onclick = async () => {
+    try { await api("/api/telegram/connect", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({token: $("tgToken").value})}); toast("Token verified — press Start in the bot chat"); loadTelegram(); }
+    catch (e) { toast(e.message); } };
+  if ($("tgTest")) $("tgTest").onclick = async () => { try { const r = await api("/api/telegram/test", {method: "POST"});
+    toast(r.delivered ? "Test message delivered" : "Not delivered — see logs"); } catch (e) { toast(e.message); } };
+  if ($("tgDisconnect")) $("tgDisconnect").onclick = async () => { await api("/api/telegram/disconnect", {method: "POST"}); loadTelegram(); };
+}
+loadTelegram(); setInterval(() => { if (tgState && tgState.pairing) loadTelegram(); }, 3000);
 refresh(); setInterval(refresh, 1500);
 setInterval(() => { if (tab === "logs") loadLogs(); }, 2000);
 </script>

@@ -14,6 +14,10 @@ from tools.http import FetchError, HttpClient, RobotsDisallowed
 from tools.research import OfflineResearchProvider, WikipediaProvider, research_field
 from tools.telegram import TelegramClient, chunk_text
 
+from core.config import load_config
+
+CFG = load_config()
+DDG_URL = CFG["search"]["duckduckgo_endpoint"]
 HTTP_CFG = {"user_agent": "TestBot/1.0", "timeout_s": 5, "retries": 2, "min_delay_s": 0.0, "cache": False}
 
 
@@ -142,8 +146,8 @@ DDG_HTML = """<html><body>
 
 
 def test_duckduckgo_parse_filters_and_dedups():
-    http = HttpClient(HTTP_CFG, offline={S.DuckDuckGoProvider.ENDPOINT: DDG_HTML})
-    res = S.DuckDuckGoProvider(http).search("Germany", "renewable energy", 10)
+    http = HttpClient(HTTP_CFG, offline={DDG_URL: DDG_HTML})
+    res = S.DuckDuckGoProvider(http, CFG["search"]).search("Germany", "renewable energy", 10)
     assert [r["domain"] for r in res] == ["acme-solar.example", "beta-wind.example"]
     assert res[0]["url"] == "https://www.acme-solar.example/"
 
@@ -170,6 +174,36 @@ def test_gather_dedup_and_failure_isolation():
     assert [r["domain"] for r in res] == ["same.example", "Germany.example"]
 
 
+def test_gather_round_robin():
+    class P:
+        name = "p"
+
+        def search(self, country, industry, limit):
+            return [{"domain": f"{country}-{i}.example", "url": "u"} for i in range(5)]
+    res = S.gather_companies(P(), ["A", "B"], ["x"], 4)
+    assert [r["domain"] for r in res] == ["A-0.example", "B-0.example", "A-1.example", "B-1.example"]
+
+
+def test_wikidata_provider_parses_sparql():
+    def fake(url, params):
+        assert "wdt:P856" in params["query"] and "wd:Q145" in params["query"]
+        return json.dumps({"results": {"bindings": [
+            {"item": {"value": "http://www.wikidata.org/entity/Q1"}, "itemLabel": {"value": "Acme Ltd"},
+             "website": {"value": "https://www.acme.example/en/"}, "industryLabel": {"value": "software"}},
+            {"item": {"value": "http://www.wikidata.org/entity/Q2"}, "itemLabel": {"value": "Acme dup"},
+             "website": {"value": "https://acme.example"}, "industryLabel": {"value": "software industry"}},
+            {"item": {"value": "http://www.wikidata.org/entity/Q3"}, "itemLabel": {"value": "Social"},
+             "website": {"value": "https://facebook.com/x"}, "industryLabel": {"value": "software"}}]}})
+    res = S.WikidataProvider(HttpClient(HTTP_CFG, offline=fake), CFG["search"]).search("United Kingdom", "software", 5)
+    assert [(r["domain"], r["url"]) for r in res] == [("acme.example", "https://www.acme.example/")]
+
+
+def test_duckduckgo_bot_challenge_detected():
+    http = HttpClient(HTTP_CFG, offline={DDG_URL: "<html>anomaly-modal challenge</html>"})
+    with pytest.raises(S.SearchBlocked):
+        S.DuckDuckGoProvider(http, CFG["search"]).search("Germany", "software", 5)
+
+
 # ------------------------------------------------------------------ research
 def test_offline_research_has_urls():
     ev = research_field(OfflineResearchProvider(), "logistics", [], 6)
@@ -182,7 +216,7 @@ def test_wikipedia_provider_parses_api():
             return json.dumps({"query": {"search": [{"title": "Solar power"}]}})
         return json.dumps({"query": {"pages": {"1": {"extract": "Solar power is the conversion of sunlight. " * 20}}}})
     http = HttpClient(HTTP_CFG, offline=fake)
-    docs = WikipediaProvider(http).research("renewable energy", ["solar"], 3)
+    docs = WikipediaProvider(http, CFG["research"]).research("renewable energy", ["solar"], 3)
     assert docs[0]["url"] == "https://en.wikipedia.org/wiki/Solar_power" and "sunlight" in docs[0]["text"]
 
 

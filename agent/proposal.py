@@ -44,21 +44,33 @@ def _size_number(size: str) -> int | None:
     return int(m.group(1).replace(",", "")) if m else None
 
 
-def budget_range(size: str, n_projects: int) -> tuple[str, str]:
-    """Indicative budget band (planning assumption) from the company's stated size."""
-    n = _size_number(size)
-    if n is None:
-        return "EUR 60,000 – 180,000", "company size not stated; mid-range band assumed"
-    if n < 50:
-        lo, hi = 40, 90
-    elif n < 250:
-        lo, hi = 90, 220
-    else:
-        lo, hi = 220, 600
+DEFAULT_PROPOSAL_CFG = {
+    "currency": "EUR",
+    "budget_bands": [{"max_employees": 49, "low": 40, "high": 90}, {"max_employees": 249, "low": 90, "high": 220},
+                     {"max_employees": 10**9, "low": 220, "high": 600}],
+    "default_band": {"low": 60, "high": 180},
+    "timeline": [["Discovery", "1–3", "Baseline report"], ["Design", "4–6", "Approved architecture"],
+                 ["Build", "7–14", "Feature-complete release"], ["Pilot", "15–18", "Pilot results vs. KPIs"],
+                 ["Hand-over", "19–20", "Operations hand-over"]],
+    "team": ["Project manager (0.5 FTE)", "Solution architect (0.5 FTE)", "Two engineers (2.0 FTE)",
+             "Data/analytics specialist (0.5 FTE)"],
+}
+
+
+def budget_range(size: str, n_projects: int, pcfg: dict | None = None) -> tuple[str, str]:
+    """Indicative budget band (planning assumption) from the company's stated size (bands in config)."""
+    pcfg = pcfg or DEFAULT_PROPOSAL_CFG
+    cur = pcfg.get("currency", "EUR")
     k = max(1, min(n_projects, 3))
     scale = 1 + 0.5 * (k - 1)          # each additional project adds half a base budget
-    return (f"EUR {int(lo * scale):,},000 – {int(hi * scale):,},000",
-            f"based on stated size ({size}) and {k} project(s)")
+    n = _size_number(size)
+    if n is None:
+        band = pcfg["default_band"]
+        basis = "company size not stated; mid-range band assumed"
+    else:
+        band = next(b for b in pcfg["budget_bands"] if n <= b["max_employees"])
+        basis = f"based on stated size ({size}) and {k} project(s)"
+    return f"{cur} {int(band['low'] * scale):,},000 – {int(band['high'] * scale):,},000", basis
 
 
 def _claims(sheet: Any) -> list[dict]:
@@ -74,6 +86,9 @@ def _sentence(text: str) -> str:
 
 class TemplateWriter:
     name = "template"
+
+    def __init__(self, proposal_cfg: dict | None = None):
+        self.pcfg = proposal_cfg or DEFAULT_PROPOSAL_CFG
 
     def facts_paragraph(self, sheet: Any, book: SourceBook, corpus_urls: dict[str, str], limit: int = 5) -> list[str]:
         out = []
@@ -159,18 +174,15 @@ class TemplateWriter:
                      "Hand-over: documentation, training and support plan."] + f[:2])
             elif title == "Timeline and Milestones":
                 sec(title, ["Indicative plan (proposal assumption):"],
-                    table={"headers": ["Phase", "Weeks", "Milestone"], "rows": [
-                        ["Discovery", "1–3", "Baseline report"], ["Design", "4–6", "Approved architecture"],
-                        ["Build", "7–14", "Feature-complete release"], ["Pilot", "15–18", "Pilot results vs. KPIs"],
-                        ["Hand-over", "19–20", "Operations hand-over"]]})
+                    table={"headers": ["Phase", "Weeks", "Milestone"],
+                           "rows": [list(map(str, r)) for r in self.pcfg["timeline"]]})
             elif title == "Deliverables":
                 sec(title, [], [f"{t}: production-ready implementation and documentation." for t in titles[:3]] +
                     ["Baseline and pilot KPI reports.", "Training material and operations runbook."])
             elif title == "Team and Resources":
                 sec(title, [f"Client side: a sponsor and domain experts from {name}" +
                             (f" (the company reports {profile['size']})." if profile.get("size") not in (None, "", "not stated") else ".")],
-                    ["Project manager (0.5 FTE)", "Solution architect (0.5 FTE)", "Two engineers (2.0 FTE)",
-                     "Data/analytics specialist (0.5 FTE)"] + f[:2])
+                    list(self.pcfg["team"]) + f[:2])
             elif title == "Risks and Mitigation":
                 rows = [["Data availability or quality is lower than expected", "Data audit in discovery; scope adjusted early"],
                         ["Adoption by staff", "Co-design with users; training; phased roll-out"],
@@ -179,7 +191,7 @@ class TemplateWriter:
                     rows.append([_sentence(c["text"]), "Addressed explicitly in design and pilot scope"])
                 sec(title, f[:2], table={"headers": ["Risk", "Mitigation"], "rows": rows})
             elif title == "Budget Range":
-                band, basis = budget_range(profile.get("size", ""), len(titles))
+                band, basis = budget_range(profile.get("size", ""), len(titles), self.pcfg)
                 sec(title, [f"Indicative budget: {band} (planning estimate, {basis}; not a quotation).",
                             "Final pricing follows the discovery phase."])
             elif title == "Expected Impact":
@@ -215,7 +227,8 @@ class ModelWriter(TemplateWriter):
 
     name = "model"
 
-    def __init__(self, model_policy, max_tokens: int = 200):
+    def __init__(self, model_policy, max_tokens: int = 200, proposal_cfg: dict | None = None):
+        super().__init__(proposal_cfg)
         self.policy = model_policy
         self.max_tokens = max_tokens
 

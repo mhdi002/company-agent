@@ -19,23 +19,40 @@ STATIC = Path(__file__).parent / "static"
 # Settings the UI may edit: section -> {key: type}
 EDITABLE: dict[str, dict[str, type]] = {
     "agent": {"countries": list, "industries": list, "companies_per_run": int, "daily_limit": int,
-              "concurrency": int, "policy": str, "send_logs_every": int},
+              "concurrency": int, "policy": str, "send_logs_every": int, "continuous": bool,
+              "run_interval_minutes": float},
     "srlm": {"K": int, "temperature": float, "top_p": float, "max_steps": int, "step_timeout_s": int,
              "use_self_consistency": bool, "use_verbalized_confidence": bool, "use_trace_length": bool,
              "use_subcalls": bool, "direct_baseline": bool, "max_retries": int},
     "search": {"provider": str, "seed_file": str},
     "research": {"provider": str, "max_sources": int},
     "fetch": {"min_delay_s": float, "max_pages_per_site": int, "respect_robots": bool},
-    "telegram": {"enabled": bool},
+    "telegram": {"enabled": bool, "heartbeat_minutes": float, "commands": bool},
     "docx": {"backend": str},
 }
 
 
 class AppState:
-    def __init__(self, agent_factory=None):
+    def __init__(self, agent_factory=None, bot_factory=None):
         self.lock = threading.Lock()
         self.factory = agent_factory or self._default_factory
+        self.bot_factory = bot_factory
         self.agent = None
+        self.bot = None
+
+    def get_bot(self):
+        """The Telegram bot shares the agent's Telegram client, so pairing updates delivery immediately."""
+        if self.bot is None:
+            from agent.telegram_bot import TelegramBot
+            a = self.get()
+            actions = {
+                "run": lambda: f"Started run {self.get().start(background=True)}",
+                "stop": lambda: (self.get().stop(), "Stopping after the current step.")[1],
+                "status": lambda: self.get().status_text(),
+                "logs": lambda: (self.get()._send_logs(final=False), "Log files sent.")[1],
+            }
+            self.bot = (self.bot_factory or TelegramBot)(a.cfg, actions, client=a.telegram)
+        return self.bot
 
     @staticmethod
     def _default_factory(cfg: dict):
@@ -60,7 +77,10 @@ class AppState:
         with self.lock:
             if self.agent is not None and self.agent.running:
                 raise HTTPException(409, "stop the run before changing settings")
+            if self.bot is not None:
+                self.bot.stop_listening()
             self.agent = None
+            self.bot = None
 
 
 def _coerce(val: Any, typ: type) -> Any:
@@ -71,10 +91,18 @@ def _coerce(val: Any, typ: type) -> Any:
     return typ(val)
 
 
-def create_app(agent_factory=None) -> FastAPI:
+def create_app(agent_factory=None, bot_factory=None, restore_telegram: bool = True) -> FastAPI:
     app = FastAPI(title="ProposalAgent")
-    state = AppState(agent_factory)
+    state = AppState(agent_factory, bot_factory)
     app.state.pa = state
+
+    @app.on_event("startup")
+    def restore_bot() -> None:
+        if restore_telegram:
+            try:
+                state.get_bot().restore()
+            except Exception as e:  # the UI shows the error; the app still starts
+                plog.get_logger("tools").error("telegram.restore", e, tool="telegram")
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
@@ -89,7 +117,35 @@ def create_app(agent_factory=None) -> FastAPI:
                 "companies": {d: {"name": c.get("name"), "status": c["status"], "error": c.get("error"),
                                   "files": c.get("files")} for d, c in s["companies"].items()},
                 "started_at": s["started_at"], "finished_at": s["finished_at"],
-                "processed_today": a.store.processed_today()}
+                "processed_today": a.store.processed_today(), "heartbeat": s.get("heartbeat"),
+                "next_run_at": s.get("next_run_at"), "continuous": bool(a.cfg["agent"].get("continuous"))}
+
+    @app.get("/api/telegram")
+    def telegram_status() -> dict:
+        return state.get_bot().status()
+
+    @app.post("/api/telegram/connect")
+    def telegram_connect(body: dict = Body(...)) -> dict:
+        token = str(body.get("token") or "").strip()
+        if not token:
+            raise HTTPException(400, "token is required")
+        try:
+            return state.get_bot().connect(token)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+
+    @app.post("/api/telegram/test")
+    def telegram_test() -> dict:
+        bot = state.get_bot()
+        if not bot.client.configured:
+            raise HTTPException(409, "connect the bot and press Start in its chat first")
+        rec = bot.client.send_message("👋 Test message from ProposalAgent. " + state.get().status_text())
+        return {"delivered": all(r.get("delivered") for r in rec), "receipts": rec}
+
+    @app.post("/api/telegram/disconnect")
+    def telegram_disconnect() -> dict:
+        state.get_bot().disconnect()
+        return {"disconnected": True}
 
     @app.post("/api/start")
     def start() -> dict:

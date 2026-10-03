@@ -1,7 +1,7 @@
 """End-to-end runs on 10 companies.
 
 * test_e2e_offline_10: always runs — 10 fixture companies through the whole agent (fixture websites, offline research).
-* test_e2e_real_10: real internet (DuckDuckGo search, real company websites, Wikipedia research). Skipped
+* test_e2e_real_10: real internet (Wikidata company search, real company websites, Wikipedia research). Skipped
   unless PA_NETWORK_TESTS=1 because it needs outbound access.
 """
 import json
@@ -52,9 +52,10 @@ def test_e2e_offline_10(tmp_path):
 @pytest.mark.network
 def test_e2e_real_10(tmp_path):
     from core.config import load_config
-    cfg = make_cfg(tmp_path, countries=ALL_COUNTRIES, industries=["software", "logistics"], companies_per_run=10,
+    cfg = make_cfg(tmp_path, countries=["United Kingdom", "Canada", "Australia", "Singapore", "Ireland"],
+                   industries=["software", "logistics", "renewable energy"], companies_per_run=10,
                    policy=os.environ.get("PA_POLICY", "template"))
-    cfg["search"]["provider"] = "duckduckgo"
+    cfg["search"]["provider"] = "wikidata"
     cfg["research"]["provider"] = "wikipedia"
     cfg["fetch"].update(load_config()["fetch"])
     a = Agent(cfg)

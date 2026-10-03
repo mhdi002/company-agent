@@ -39,6 +39,10 @@ class Stopped(Exception):
     """Raised inside a company worker when Stop was requested."""
 
 
+class SiteUnreachable(Exception):
+    """The company's homepage could not be fetched (blocked, down, TLS error, robots.txt)."""
+
+
 def safe_name(domain: str) -> str:
     return re.sub(r"[^\w.-]+", "_", domain)
 
@@ -55,9 +59,10 @@ def build_policy(cfg: dict):
     if cfg["agent"]["policy"] == "model":
         if ck.exists() and count:
             pol = ModelPolicy.from_checkpoint(ck, tok_dir, max_new_tokens=int(cfg["agent"]["max_new_tokens"]))
-            return pol, pol.tok.count, ModelWriter(pol)
+            return pol, pol.tok.count, ModelWriter(pol, proposal_cfg=cfg.get("proposal"))
         log.event("policy", "warn", details=f"agent.policy=model but no checkpoint at {ck}; using template policy")
-    return TemplatePolicy(), count or (lambda s: len(re.findall(r"\w+|[^\w\s]", s))), TemplateWriter()
+    return (TemplatePolicy(), count or (lambda s: len(re.findall(r"\w+|[^\w\s]", s))),
+            TemplateWriter(cfg.get("proposal")))
 
 
 class Agent:
@@ -72,11 +77,12 @@ class Agent:
         if policy is None:
             policy, count_tokens, writer = build_policy(self.cfg)
         self.policy, self.count = policy, count_tokens or (lambda s: len(s.split()))
-        self.writer = writer or TemplateWriter()
+        self.writer = writer or TemplateWriter(self.cfg.get("proposal"))
         self.engine = SRLMEngine(self.policy, self.count, self.cfg["srlm"])
         self.search = make_provider(self.cfg, self.http)
         self.research = make_research_provider(self.cfg, self.http)
         self._stop = threading.Event()
+        self._active = threading.Event()
         self._thread: threading.Thread | None = None
         self._skill: dict | None = None
         self._docs_since_logs = 0
@@ -95,10 +101,12 @@ class Agent:
         run_id = self.store.data["run_id"] if resume else dt.datetime.now().strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
         if not resume:
             keep = {k: self.store.data[k] for k in ("processed_domains", "daily")}
+            keep["next_run_at"] = None
             self.store.data = StateStore.fresh() | keep
         self.store.update(run_id=run_id, status="running", started_at=self.store.data.get("started_at") or
                           dt.datetime.now(dt.timezone.utc).isoformat(), finished_at=None)
-        plog.configure(self.cfg["paths"]["logs"], run_id)
+        lcfg = self.cfg.get("logging", {})
+        plog.configure(self.cfg["paths"]["logs"], run_id, lcfg.get("ring_size"), lcfg.get("truncate_chars"))
         log.event("run", "start", details=f"{'resume' if resume else 'new'} run {run_id}; policy={self.policy.name}")
         if background:
             self._thread = threading.Thread(target=self._run_safe, name="agent-run", daemon=True)
@@ -132,11 +140,64 @@ class Agent:
 
     # ------------------------------------------------------------------ run
     def _run_safe(self) -> None:
+        """Run; in continuous mode keep cycling (new run every run_interval_minutes) until Stop."""
+        self._active.set()
+        hb = threading.Thread(target=self._heartbeat_loop, name="agent-heartbeat", daemon=True)
+        hb.start()
         try:
-            self._run()
-        except Exception as e:  # never die silently
-            log.error("run", e)
-            self.store.update(status="failed")
+            self._cycle()
+        finally:
+            self._active.clear()
+
+    def _cycle(self) -> None:
+        while True:
+            try:
+                self._run()
+            except Exception as e:  # never die silently
+                log.error("run", e)
+                self.store.update(status="failed")
+            if self._stop.is_set() or not self.cfg["agent"].get("continuous", False):
+                break
+            minutes = float(self.cfg["agent"].get("run_interval_minutes", 60))
+            nxt = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=minutes)
+            self.store.update(status="waiting", next_run_at=nxt.isoformat())
+            log.event("run", "waiting", details=f"continuous mode: next run at {nxt.isoformat(timespec='seconds')}")
+            if self._stop.wait(minutes * 60):
+                self.store.update(status="done", next_run_at=None)
+                log.event("run", "stopped", details="stopped while waiting for the next run")
+                break
+            keep = {k: self.store.data[k] for k in ("processed_domains", "daily", "heartbeat")
+                    if k in self.store.data}
+            run_id = dt.datetime.now().strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
+            self.store.data = StateStore.fresh() | keep
+            self.store.update(run_id=run_id, status="running", started_at=dt.datetime.now(dt.timezone.utc).isoformat())
+            plog.set_run_id(run_id)
+            log.event("run", "start", details=f"continuous mode: new run {run_id}")
+
+    def status_text(self) -> str:
+        s = self.store.data
+        c = s["counters"]
+        lines = [f"Status: {s['status']} (run {s.get('run_id') or '-'})",
+                 f"found={c['found']} processed={c['processed']} failed={c['failed']} sent={c['sent']}",
+                 f"current: {s.get('current_company') or '-'}", f"today: {self.store.processed_today()} processed"]
+        if s.get("next_run_at"):
+            lines.append(f"next run: {s['next_run_at'][:16].replace('T', ' ')} UTC")
+        return "\n".join(lines)
+
+    def _heartbeat_loop(self) -> None:
+        """While the agent thread is alive, record a heartbeat and send a Telegram status periodically."""
+        minutes = float(self.cfg["telegram"].get("heartbeat_minutes", 0) or 0)
+        beat = 0
+        while self._active.is_set():
+            now = dt.datetime.now(dt.timezone.utc).isoformat()
+            self.store.update(heartbeat={"last": now, "count": beat})
+            if minutes > 0 and beat > 0 and beat % max(int(minutes * 60 / 30), 1) == 0:
+                self._notify("💓 " + self.status_text())
+            beat += 1
+            for _ in range(30):
+                if not self._active.is_set():
+                    return
+                time.sleep(1)
 
     def _run(self) -> None:
         cfg = self.cfg
@@ -151,9 +212,12 @@ class Agent:
                 return
             t0 = time.time()
             try:
-                found = gather_companies(self.search, plan["countries"], plan["industries"], plan["limit"],
+                spare = int(cfg["agent"].get("reserve_companies", 0))
+                found = gather_companies(self.search, plan["countries"], plan["industries"], plan["limit"] + spare,
                                          set(self.store.data["processed_domains"]),
                                          int(cfg["search"]["results_per_query"]))
+                reserve, found = found[plan["limit"]:], found[:plan["limit"]]
+                self.store.update(reserve=reserve)
             except Exception as e:
                 self.todo.set("gather", "failed", str(e))
                 log.error("gather", e, tool=self.search.name)
@@ -170,10 +234,32 @@ class Agent:
                 self._send_logs(final=True)
                 self._finish("failed")
                 return
-        pending = [d for d, c in self.store.data["companies"].items() if c["status"] not in ("done", "failed")]
         conc = max(1, int(cfg["agent"]["concurrency"]))
-        with ThreadPoolExecutor(max_workers=conc, thread_name_prefix="company") as ex:
-            list(ex.map(self._process_company_safe, pending))
+        while True:
+            pending = [d for d, c in self.store.data["companies"].items()
+                       if c["status"] not in ("done", "failed", "skipped")]
+            if not pending:
+                break
+            with ThreadPoolExecutor(max_workers=conc, thread_name_prefix="company") as ex:
+                list(ex.map(self._process_company_safe, pending))
+            if self._stop.is_set():
+                break
+            # Unreachable sites were skipped: replace them with reserve candidates.
+            skipped = sum(1 for c in self.store.data["companies"].values() if c["status"] == "skipped"
+                          and not c.get("replaced"))
+            reserve = list(self.store.data.get("reserve") or [])
+            if not skipped or not reserve:
+                break
+            for d, c in self.store.data["companies"].items():
+                if c["status"] == "skipped":
+                    c["replaced"] = True
+            for c in reserve[:skipped]:
+                self.store.set_company(c["domain"], name=c["name"], url=c["url"], status="pending", source=c["source"])
+                self.todo.add_company(c["domain"])
+                self.store.bump("found")
+                log.event("gather", "reserve", tool=self.search.name, company=c["domain"],
+                          details="replacing an unreachable site with a reserve candidate")
+            self.store.update(reserve=reserve[skipped:])
         if self._stop.is_set():
             self.store.update(status="stopped", current_company=None)
             log.event("run", "stopped", details="run stopped; Start again to resume")
@@ -206,6 +292,15 @@ class Agent:
                 if it["status"] == "in_progress":
                     self.todo.set(it["id"], "pending", "stopped")
             return
+        except SiteUnreachable as e:   # blocked / down / bad TLS: skip and let a reserve take its place
+            log.event("company", "skipped", company=domain, details=str(e)[:300])
+            self.store.set_company(domain, status="skipped", error=str(e)[:300])
+            self.store.mark_processed(domain)
+            self.store.bump("skipped")
+            for it in self.todo.company_items(domain):
+                if it["status"] in ("pending", "in_progress", "failed"):
+                    self.todo.set(it["id"], "skipped", "site unreachable")
+            self._notify(f"⏭ {domain}: site unreachable, skipped — {str(e)[:150]}", domain)
         except Exception as e:  # per-company isolation: one failure never stops the run
             log.error("company", e, company=domain)
             self.store.set_company(domain, status="failed", error=f"{type(e).__name__}: {e}")
@@ -260,7 +355,10 @@ class Agent:
 
         # [2] fetch working field
         def fields() -> dict:
-            site = fetch_site(self.http, url, int(cfg["fetch"]["max_pages_per_site"]), company=domain)
+            try:
+                site = fetch_site(self.http, url, int(cfg["fetch"]["max_pages_per_site"]), company=domain)
+            except Exception as e:
+                raise SiteUnreachable(f"{type(e).__name__}: {e}") from e
             dec = self._decide(field_task(domain, site["pages"]))
             out = dec["output"] if dec["verified"] else {}
             profile = {"name": out.get("name") if out.get("name") not in (None, "unknown") else comp.get("name", domain),
@@ -328,7 +426,8 @@ class Agent:
             docx_path = resolve(cfg["paths"]["proposals"]) / f"{base}.docx"
             info = write_proposal(sections, docx_path, f"Project Proposal — {profile['name']}",
                                   cfg["docx"]["backend"] if sk.get("available") else "python-docx",
-                                  cfg["docx"]["page_size"], company=domain)
+                                  cfg["docx"]["page_size"], company=domain,
+                                  timeout_s=int(cfg["docx"].get("render_timeout_s", 120)))
             record = build_record(domain, url, profile, r["projects"], facts, sections,
                                   {"fields": f["decision"], **r.get("decisions", {}), "fact_sheets": t["decisions"]}, book)
             record["docx"] = info
@@ -372,7 +471,7 @@ class Agent:
                      f"processed={c['processed']} failed={c['failed']} sent={c['sent']}")
         for name in ("agent.log", "tools.log", "errors.log", "srlm.jsonl"):
             p = d / name
-            if p.exists() and 0 < p.stat().st_size < 45_000_000:
+            if p.exists() and 0 < p.stat().st_size < float(self.cfg["telegram"].get("max_document_mb", 45)) * 1e6:
                 try:
                     self.telegram.send_document(p, f"{name} ({'final' if final else 'progress'})")
                 except Exception as e:

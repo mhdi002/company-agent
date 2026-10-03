@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import json
 import os
-import select
+import queue
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -58,19 +59,32 @@ class Sandbox:
         (d / "cfg.json").write_text(json.dumps(wcfg))
         env = {"PYTHONPATH": str(ROOT), "PATH": os.environ.get("PATH", ""), "PYTHONHASHSEED": "0",
                "PYTHONDONTWRITEBYTECODE": "1"}
+        if os.name == "nt":   # Windows needs its system variables to start Python
+            env.update({k: v for k, v in os.environ.items() if k.upper() in ("SYSTEMROOT", "TEMP", "TMP", "PATHEXT")})
         self.proc = subprocess.Popen([sys.executable, "-m", "agent.srlm.sandbox_worker", "vars.json", "cfg.json"],
                                      cwd=d, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                     env=env, text=True, bufsize=1)
+                                     env=env, text=True, bufsize=1, encoding="utf-8")
+        # A reader thread + queue gives portable read timeouts (select() on pipes is Unix-only).
+        self.lines: queue.Queue = queue.Queue()
+        threading.Thread(target=self._pump, args=(self.proc, self.lines), daemon=True).start()
+
+    @staticmethod
+    def _pump(proc: subprocess.Popen, q: queue.Queue) -> None:
+        try:
+            for line in proc.stdout:
+                q.put(line)
+        except (OSError, ValueError):
+            pass
+        q.put("")   # EOF marker
 
     def _readline(self, deadline: float) -> str | None:
-        assert self.proc and self.proc.stdout
         remaining = deadline - time.time()
         if remaining <= 0:
             return None
-        r, _, _ = select.select([self.proc.stdout], [], [], remaining)
-        if not r:
+        try:
+            return self.lines.get(timeout=remaining)
+        except queue.Empty:
             return None
-        return self.proc.stdout.readline()
 
     def execute(self, code: str) -> ExecResult:
         t0 = time.time()

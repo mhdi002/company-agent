@@ -16,11 +16,14 @@ from core.logging import get_logger
 from tools.http import with_retries
 
 log = get_logger("tools")
-API = "https://api.telegram.org/bot{token}/{method}"
 
 
 class TelegramError(Exception):
-    pass
+    """Transient error (429 / 5xx / network): retried."""
+
+
+class TelegramFatal(Exception):
+    """Permanent error (bad token, chat not found, …): not retried."""
 
 
 def chunk_text(text: str, size: int = 3900) -> list[str]:
@@ -49,18 +52,41 @@ class TelegramClient:
         self.enabled = bool(tcfg.get("enabled", True))
         self.token = token or secret("TELEGRAM_BOT_TOKEN")
         self.chat_id = chat_id or secret("TELEGRAM_CHAT_ID")
+        self.api_base = tcfg.get("api_base", "https://api.telegram.org").rstrip("/")
         self.chunk = int(tcfg.get("chunk_chars", 3900))
         self.retries = int(tcfg.get("retries", 4))
         self.timeout = float(tcfg.get("timeout_s", 30))
         self.session = session or requests.Session()
         self.sleep = sleep
 
+    def reconfigure(self, token: str | None, chat_id: str | None) -> None:
+        self.token, self.chat_id = token or None, (str(chat_id) if chat_id else None)
+
+    def get_me(self) -> dict:
+        """Verify the token; returns the bot user ({id, username, first_name})."""
+        return self._call("getMe", {})["result"]
+
+    def delete_webhook(self) -> None:
+        """Long polling (getUpdates) only works when no webhook is set."""
+        self._call("deleteWebhook", {"drop_pending_updates": False})
+
+    def get_updates(self, offset: int | None, timeout_s: int) -> list[dict]:
+        data = {"timeout": int(timeout_s), "allowed_updates": '["message"]'}
+        if offset is not None:
+            data["offset"] = offset
+        url = f"{self.api_base}/bot{self.token}/getUpdates"
+        r = self.session.post(url, data=data, timeout=timeout_s + 10)
+        body = r.json()
+        if not body.get("ok"):
+            raise TelegramError(f"{r.status_code}: {body.get('description')}")
+        return body["result"]
+
     @property
     def configured(self) -> bool:
         return self.enabled and bool(self.token and self.chat_id)
 
     def _call(self, method: str, data: dict, files: dict | None = None) -> dict:
-        url = API.format(token=self.token, method=method)
+        url = f"{self.api_base}/bot{self.token}/{method}"
 
         def once() -> dict:
             fh = {k: (Path(p).name, open(p, "rb")) for k, p in (files or {}).items()}
@@ -78,7 +104,7 @@ class TelegramClient:
                 err.retry_after = (body.get("parameters") or {}).get("retry_after")  # type: ignore[attr-defined]
                 raise err
             if not body.get("ok"):
-                raise TelegramError(f"{r.status_code}: {body.get('description')}")
+                raise TelegramFatal(f"{r.status_code}: {body.get('description')}")
             return body
         return with_retries(once, self.retries, 1.0, (TelegramError, requests.RequestException), self.sleep, "telegram")
 

@@ -24,9 +24,15 @@ RING: collections.deque = collections.deque(maxlen=5000)
 TRUNC = 2000
 
 
-def configure(log_dir: str | Path = "logs", run_id: str | None = None) -> None:
-    """Set the log directory and current run id."""
+def configure(log_dir: str | Path = "logs", run_id: str | None = None, ring_size: int | None = None,
+              truncate_chars: int | None = None) -> None:
+    """Set the log directory, current run id and (optionally) buffer/truncation sizes from config."""
+    global RING, TRUNC
     with _LOCK:
+        if ring_size and ring_size != RING.maxlen:
+            RING = collections.deque(RING, maxlen=int(ring_size))
+        if truncate_chars:
+            TRUNC = int(truncate_chars)
         d = resolve(log_dir)
         d.mkdir(parents=True, exist_ok=True)
         _STATE["dir"] = d
@@ -48,8 +54,9 @@ def log_dir() -> Path:
     return _STATE["dir"]
 
 
-def truncate(v: Any, n: int = TRUNC) -> Any:
+def truncate(v: Any, n: int | None = None) -> Any:
     """Truncate long strings (recursively) so logs stay readable."""
+    n = n or TRUNC
     if isinstance(v, str):
         return v if len(v) <= n else v[:n] + f"...[+{len(v) - n} chars]"
     if isinstance(v, dict):

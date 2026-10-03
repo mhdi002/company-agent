@@ -75,12 +75,15 @@ agent:
   countries: ["Germany", "United Kingdom", "Canada", "Australia", "Netherlands", "Singapore"]
   industries: ["software", "logistics", "renewable energy", "manufacturing", "healthcare", "agriculture"]
   companies_per_run: 10
+  reserve_companies: 5       # extra candidates that replace unreachable sites
   daily_limit: 50
   concurrency: 2
   policy: model              # model | template  (template = deterministic programmatic policy, used when no trained checkpoint exists)
   checkpoint: training/checkpoints/sft/latest.pt
   max_new_tokens: 512
   send_logs_every: 5
+  continuous: true           # after a run finishes, start the next one after run_interval_minutes (until Stop)
+  run_interval_minutes: 60
 
 srlm:
   K: 8
@@ -107,8 +110,28 @@ srlm:
   allowed_imports: [re, math, json, collections, itertools, statistics, string]
 
 search:
-  provider: duckduckgo       # duckduckgo | seedfile | offline
+  provider: wikidata         # wikidata | duckduckgo | seedfile | offline
   seed_file: data/sample/seed_companies.json
+  wikidata_sparql: https://query.wikidata.org/sparql
+  wikidata_api: https://www.wikidata.org/w/api.php
+  duckduckgo_endpoint: https://html.duckduckgo.com/html/
+  duckduckgo_query: "{industry} company {country} official website"
+  # Industry label substrings matched against Wikidata's "industry" (P452) labels, per field.
+  industry_keywords:
+    renewable energy: [renewable, solar, wind power, photovoltaic]
+    logistics: [logistics, freight, shipping, courier]
+    software: [software, information technology, computer programming]
+    agriculture: [agricultur, farming, agritech]
+    manufacturing: [manufactur, machinery, mechanical engineering]
+    healthcare: [health, medical, biotechnology]
+    finance: [financ, banking, insurance]
+    construction: [construction, civil engineering]
+    education: [education, e-learning]
+    retail: [retail, supermarket, grocery]
+  # Country → Wikidata id. Countries not listed are resolved through the Wikidata search API.
+  country_qids: {Germany: Q183, United Kingdom: Q145, Canada: Q16, Australia: Q408, Netherlands: Q55,
+                 Singapore: Q334, United States: Q30, France: Q142, Spain: Q29, Italy: Q38, Sweden: Q34,
+                 Ireland: Q27, India: Q668, Japan: Q17, New Zealand: Q664, Switzerland: Q39}
   results_per_query: 10
   timeout_s: 20
   retries: 3
@@ -126,16 +149,47 @@ fetch:
 research:
   provider: wikipedia        # wikipedia | offline
   max_sources: 6
+  wikipedia_api: https://en.wikipedia.org/w/api.php
+  results_per_query: 3
+  max_chars_per_source: 4000
+  queries: ["{field} industry", "{field} technology trends", "{service}"]   # {service} expands to the first 2 services
 
 telegram:
   enabled: true
+  api_base: https://api.telegram.org
   chunk_chars: 3900
   retries: 4
   timeout_s: 30
+  max_document_mb: 45        # Bot API upload limit is 50 MB
+  heartbeat_minutes: 30      # status message while the agent is running (0 = off)
+  commands: true             # accept /run /stop /status /logs from the connected chat
+  poll_timeout_s: 25         # long-polling timeout for bot commands
 
 docx:
   backend: auto              # auto | docxjs | python-docx
   page_size: A4
+  render_timeout_s: 120
+
+proposal:
+  currency: EUR
+  # Indicative budget band (thousands) by stated company size; extra projects add 50 % each.
+  budget_bands:
+    - {max_employees: 49, low: 40, high: 90}
+    - {max_employees: 249, low: 90, high: 220}
+    - {max_employees: 1000000000, low: 220, high: 600}
+  default_band: {low: 60, high: 180}
+  timeline:
+    - [Discovery, "1–3", Baseline report]
+    - [Design, "4–6", Approved architecture]
+    - [Build, "7–14", Feature-complete release]
+    - [Pilot, "15–18", Pilot results vs. KPIs]
+    - [Hand-over, "19–20", Operations hand-over]
+  team: ["Project manager (0.5 FTE)", "Solution architect (0.5 FTE)", "Two engineers (2.0 FTE)",
+         "Data/analytics specialist (0.5 FTE)"]
+
+logging:
+  ring_size: 5000
+  truncate_chars: 2000
 
 app:
   host: 127.0.0.1

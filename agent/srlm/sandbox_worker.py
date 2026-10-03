@@ -17,7 +17,6 @@ import ast
 import builtins
 import io
 import json
-import resource
 import sys
 import traceback
 from contextlib import redirect_stdout
@@ -62,6 +61,11 @@ def validate(code: str, allowed: set[str]) -> ast.AST:
 
 
 def apply_limits(mem_mb: int, cpu_s: int, fsize_mb: int = 1) -> None:
+    """POSIX resource limits. On Windows (no `resource` module) only the parent's wall-clock timeout applies."""
+    try:
+        import resource
+    except ImportError:
+        return
     resource.setrlimit(resource.RLIMIT_AS, (mem_mb * 1024 * 1024, mem_mb * 1024 * 1024))
     resource.setrlimit(resource.RLIMIT_CPU, (cpu_s, cpu_s + 5))
     resource.setrlimit(resource.RLIMIT_FSIZE, (fsize_mb * 1024 * 1024, fsize_mb * 1024 * 1024))
@@ -70,6 +74,9 @@ def apply_limits(mem_mb: int, cpu_s: int, fsize_mb: int = 1) -> None:
 
 def main() -> None:
     vars_path, cfg_path = sys.argv[1], sys.argv[2]
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stdin.reconfigure(encoding="utf-8")
     with open(vars_path, encoding="utf-8") as f:
         variables = json.load(f)
     with open(cfg_path, encoding="utf-8") as f:

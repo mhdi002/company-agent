@@ -37,8 +37,9 @@ def main(argv=None) -> None:
     ap.add_argument("--offline", action="store_true")
     ap.add_argument("--companies", type=int)
     ap.add_argument("--policy", choices=["model", "template"])
+    ap.add_argument("--continuous", action="store_true", help="keep running new cycles until Ctrl+C")
     a = ap.parse_args(argv)
-    ov: dict = {"agent": {}}
+    ov: dict = {"agent": {"continuous": bool(a.continuous)}}
     if a.companies:
         ov["agent"]["companies_per_run"] = a.companies
     if a.policy:

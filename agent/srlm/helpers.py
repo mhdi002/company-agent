@@ -85,6 +85,20 @@ def project_title(sentence: str) -> str:
     return _cap(s)[:90]
 
 
+_HISTORY = re.compile(r"\b(before that|in the (?:late |early )?(?:1[0-9]|20[0-1])\d0s|historically|originally|"
+                      r"was founded|were founded|in (?:1[0-9]\d\d|200\d|201[0-4]))\b", re.I)
+_PAST = re.compile(r"\b(was|were|had|became|did)\b", re.I)
+
+
+def is_current(sentence: str) -> bool:
+    """True for present-tense, informative statements (not history, not fragments)."""
+    s = sentence.strip()
+    if not 40 <= len(s) <= 320 or _HISTORY.search(s):
+        return False
+    words = s.split()
+    return len(_PAST.findall(s)) <= 1 and sum(w[:1].isupper() for w in words[1:]) < len(words) * 0.5
+
+
 class Helpers:
     """Bound to the sandbox namespace so helpers can take variable names."""
 
@@ -183,8 +197,11 @@ class Helpers:
         """Turn a gap or trend statement into a short project title (heuristic rewrite)."""
         return project_title(sentence)
 
+    def is_current(self, sentence: str) -> bool:
+        return is_current(sentence)
+
     def namespace(self) -> dict:
-        return {"search_context": self.search_context, "bm25": self.bm25, "slice": self.slice,
+        return {"is_current": self.is_current, "search_context": self.search_context, "bm25": self.bm25, "slice": self.slice,
                 "extract_fields": self.extract_fields, "describe": self.describe, "sentences": self.sentences,
                 "overlap": self.overlap, "project_from_gap": self.project_from_gap}
 
@@ -194,4 +211,5 @@ bm25(query, k=5, var="context") -> [{source, score, text}]
 slice(var, a, b) -> str
 extract_fields(text_or_var) -> {name, country, field, services, size}
 sentences(var) -> [{source, text}]   overlap(a, b) -> float   project_from_gap(sentence) -> str
+is_current(sentence) -> bool  # present-tense, informative (not history)
 describe(var) -> str   FINAL(value)  # sets the program output (JSON-serialisable) and ends the program"""

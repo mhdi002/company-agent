@@ -11,7 +11,8 @@
 See `docs/PHASE_REPORTS.md` (Phases 2, 3, 4, 9) and `docs/eval/`.
 
 ## Known limits
-* **No GPU and no general internet here.** The 1B model is not trained; the shipped checkpoint is the tiny smoke model (not committed; recreate with `./scripts/smoke_pipeline.sh`). Real dataset downloads, real web search, Wikipedia research and Telegram delivery are implemented and unit-tested with fakes, but have not been exercised against the live services.
+* **No GPU here.** The 1B model is not trained; the shipped checkpoint is the tiny smoke model (not committed; recreate with `./run.sh --smoke-train`). Until a trained checkpoint exists the agent uses the deterministic fallback policy, which gives generic project ideas on real Wikipedia evidence.
+* Live internet was tested later in the session: 10/10 real companies processed (Wikidata → crawl → Wikipedia → .docx). Telegram delivery is tested against the real API for the error path only, because no bot token was available.
 * Evaluation companies are fixtures/synthetic and share page templates with the synthetic training data: these are in-distribution pipeline checks, not real-web generalization numbers.
 * The tiny model's confidence is poorly calibrated (ECE 0.265); the template policy's confidences are heuristic, which is why VC-only selection underperforms there.
 * Field taxonomy (10 fields) and the field classifier are keyword based; services extraction is regex based.

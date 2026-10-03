@@ -106,7 +106,8 @@ EVIDENCE = [
                    'print([(e["id"], e.get("title", "")) for e in rel])', 72.0),
         lambda h: ("Quote every sentence of the relevant documents as a fact with its source.",
                    'facts = []\nfor e in rel:\n    for s in sentences(e["text"]):\n'
-                   '        facts.append({"fact": s["text"], "source_id": e["id"], "url": e["url"]})\n'
+                   '        if is_current(s["text"]):\n'
+                   '            facts.append({"fact": s["text"], "source_id": e["id"], "url": e["url"]})\n'
                    'print(len(facts))\nprint(facts[:2])', 75.0),
         lambda h: ("Return the quoted facts.", "FINAL(facts[:12])",
                    _c(_last(h), 84.0, 15.0, ("\n0\n", "[error]", "[]"))),
@@ -117,7 +118,8 @@ EVIDENCE = [
                    'print(len(sents), "sentences;", q)', 70.0),
         lambda h: ("Rank sentences by word overlap with the query and keep the relevant ones.",
                    'urls = {e["id"]: e["url"] for e in evidence}\n'
-                   'keep = [s for s in sorted(sents, key=lambda s: -overlap(s["text"], q)) if overlap(s["text"], q) > 0][:8]\n'
+                   'keep = [s for s in sorted(sents, key=lambda s: -overlap(s["text"], q)) '
+                   'if overlap(s["text"], q) > 0 and is_current(s["text"])][:8]\n'
                    'for s in keep:\n    print(s["source"], round(overlap(s["text"], q), 3), s["text"][:120])', 72.0),
         lambda h: ("Return the ranked facts with their sources.",
                    'FINAL([{"fact": s["text"], "source_id": s["source"], "url": urls[s["source"]]} for s in keep])',
@@ -132,7 +134,7 @@ EVIDENCE = [
         lambda h: ("Quote the sentences of the retrieved chunks.",
                    'urls = {e["id"]: e["url"] for e in evidence}\n'
                    'facts = [{"fact": s["text"], "source_id": h["source"], "url": urls[h["source"]]} '
-                   'for h in hits for s in sentences(h["text"])]\nFINAL(facts[:12])',
+                   'for h in hits for s in sentences(h["text"]) if is_current(s["text"])]\nFINAL(facts[:12])',
                    _c(_last(h), 76.0, 20.0, ("[]", "[error]"))),
     ]),
     Strategy("paraphrase", [
@@ -148,17 +150,22 @@ EVIDENCE = [
 ]
 
 # ============================================================================ project selection
+ACTION_PATTERN = (r'(?i)\b(automat\w*|digital\w*|data|monitor\w*|forecast\w*|platform|analytics|sensor\w*|optimi\w*|'
+                  r'integrat\w*|cloud|electrif\w*|efficien\w*|reduc\w*|improv\w*|increas\w*|predictive|scheduling|'
+                  r'visibility|tracking|inspection|storage|software|app|api|dashboard\w*|prefabricat\w*|saves?)\b')
 GAP_PATTERN = r'(?i)\b(few|still|limited|bottleneck|barrier|remains|lack|manual|spreadsheets|whiteboards)\b'
 PROJECTS = [
     Strategy("gaps_first", [
         lambda h: ("Separate gap statements (unsolved problems) from general trends.",
                    "import re\n"
-                   f'gaps = [f for f in facts if re.search(r"{GAP_PATTERN}", f["fact"])]\n'
+                   'svc = " ".join(profile.get("services", [])) + " " + profile["field"]\n'
+                   f'gaps = [f for f in facts if re.search(r"{GAP_PATTERN}", f["fact"]) and is_current(f["fact"])]\n'
                    'trends = [f for f in facts if f not in gaps]\nprint(len(gaps), "gaps;", len(trends), "trends")\n'
                    'for g in gaps:\n    print("-", g["fact"][:140])', 74.0),
         lambda h: ("Turn gaps into project ideas first, then trends ranked by fit with the company's services.",
                    'svc = " ".join(profile.get("services", [])) + " " + profile["field"]\n'
                    'ranked = gaps + sorted(trends, key=lambda f: -overlap(f["fact"], svc))\n'
+                   f'ranked = [f for f in ranked if re.search(r"{ACTION_PATTERN}", f["fact"]) and is_current(f["fact"])]\n'
                    'cands = [{"title": project_from_gap(f["fact"]), "rationale": f["fact"], '
                    '"evidence_ids": [f["source_id"]]} for f in ranked]\nprint([c["title"] for c in cands[:5]])', 78.0),
         lambda h: ("Return the top three projects.", "FINAL(cands[:3])",
@@ -168,7 +175,8 @@ PROJECTS = [
         lambda h: ("Score every fact by fit with the company's services, with a bonus for gap statements.",
                    "import re\nsvc = \" \".join(profile.get(\"services\", [])) + \" \" + profile[\"field\"]\n"
                    f'score = lambda f: overlap(f["fact"], svc) + (0.5 if re.search(r"{GAP_PATTERN}", f["fact"]) else 0)\n'
-                   'ranked = sorted(facts, key=lambda f: -score(f))\nfor f in ranked[:5]:\n'
+                   f'ranked = [f for f in sorted(facts, key=lambda f: -score(f)) if re.search(r"{ACTION_PATTERN}", f["fact"])]\n'
+                   'for f in ranked[:5]:\n'
                    '    print(round(score(f), 3), f["fact"][:120])', 72.0),
         lambda h: ("Return the three best-scoring ideas as projects.",
                    'FINAL([{"title": project_from_gap(f["fact"]), "rationale": f["fact"], '

@@ -61,6 +61,6 @@ def test_e2e_real_10(tmp_path):
     a = Agent(cfg)
     a.start(background=False)
     s = a.snapshot()
-    assert s["counters"]["found"] == 10
-    assert s["counters"]["processed"] >= 8          # some real sites may block or be down
+    assert s["counters"]["found"] >= 10             # includes reserves that replaced unreachable sites
+    assert s["counters"]["processed"] >= 9          # real sites that block bots are skipped and replaced
     check_outputs(tmp_path, s["counters"]["processed"])

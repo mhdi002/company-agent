@@ -17,29 +17,62 @@ is chosen by self-consistency, verbalized confidence and trace length.
 * Decisions: [`docs/DECISIONS.md`](docs/DECISIONS.md) · Phase reports and metrics: [`docs/PHASE_REPORTS.md`](docs/PHASE_REPORTS.md)
 * Datasets and licenses: [`data/MANIFEST.md`](data/MANIFEST.md) · Cleaning report: [`data/reports/cleaning_report.md`](data/reports/cleaning_report.md)
 
-## 1. Setup
+## 1. Quick start (one command)
+
+| OS | Command |
+|---|---|
+| Linux / macOS | `./run.sh` |
+| Windows | double-click `run.bat` (or `powershell -ExecutionPolicy Bypass -File run.ps1`) |
+
+The script installs everything that is missing, then starts the app and opens http://127.0.0.1:8000.
+It installs Python 3.10+ if needed (apt/dnf/brew or winget), creates a virtualenv, and installs
+PyTorch (the CUDA build when `nvidia-smi` is present, otherwise CPU) plus all packages. It also
+installs docx-js if Node is available and creates `.env`. Re-runs are fast, because packages are
+reinstalled only when `requirements.txt` changes.
+
+Then, in the browser:
+1. **Telegram card:** create a bot with [@BotFather](https://t.me/BotFather) (`/newbot`), paste the token, and press **Connect bot**.
+2. Open the bot link that appears and press **Start** in Telegram. The app pairs with that chat automatically.
+3. Press **Start** in the app. The heartbeat begins: the agent works through its to-do list, sends each proposal
+   to Telegram, then waits `run_interval_minutes` and starts the next run, until you press **Stop**.
+   A status message arrives every `heartbeat_minutes`.
+
+From Telegram you can also send `/run`, `/stop`, `/status` and `/logs`. Only the paired chat is obeyed.
+
+Useful options:
+
+| Option | `run.sh` | `run.bat` / `run.ps1` |
+|---|---|---|
+| run detached / stop | `--background` / `--stop` | `-Background` / `-Stop` |
+| custom port or host | `--port 9000 --host 0.0.0.0` | `-Port 9000 -HostName 0.0.0.0` |
+| demo without internet | `--offline` | `-Offline` |
+| update from git first | `--update` | `-Update` |
+| run the tests | `--test` | `-Test` |
+| train the tiny model on CPU (~15 min) | `--smoke-train` | `-SmokeTrain` |
+
+Manual setup, if you prefer:
 
 ```bash
 python3.11 -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt            # CUDA machines: install the matching torch wheel first
-npm install                                # docx-js for Word output (optional; python-docx fallback)
-cp .env.example .env                       # add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
-python -m pytest                           # ~120 tests, all offline (network tests: PA_NETWORK_TESTS=1)
+pip install -r requirements.txt && npm install && cp .env.example .env
+python -m pytest            # offline tests; PA_NETWORK_TESTS=1 also runs the real-internet test
+python -m app               # UI
+python -m agent run [--offline] [--continuous]   # headless
 ```
 
-Configuration lives in `config.yaml`. Override any key with `PA__SECTION__KEY=value`, or on the UI
-settings page (saved to `config.override.yaml`). Secrets only go in `.env`.
+## 2. Configuration (nothing is hard-coded)
 
-## 2. Run the app
+All behaviour is set in `config.yaml`. This includes search and research endpoints, query
+templates, the industry→Wikidata keyword map, country ids, politeness limits, SRLM switches,
+budget bands, timeline, team roles, Telegram limits and heartbeat, continuous mode and log
+sizes. Override any key with `PA__SECTION__KEY=value` or on the UI settings page (saved to
+`config.override.yaml`). Secrets (bot token, chat id) live only in `.env`, and the Telegram card
+writes them for you.
 
-```bash
-python -m app                              # http://127.0.0.1:8000 — Start / Stop / Resume, to-do, logs, settings
-python -m agent run                        # headless run with the providers in config.yaml
-python -m agent run --offline --policy template --companies 8   # no network: bundled fictional companies
-```
-
-Real runs use DuckDuckGo search, company websites (robots.txt respected, 2 s per-host delay, cache) and
-Wikipedia for field research. Providers are pluggable (`search.provider: duckduckgo | seedfile | offline`).
+Company search uses **Wikidata** by default: open data listing each company's country, industry
+and official website. Other search providers are `duckduckgo` (often bot-challenged from servers),
+`seedfile` (your own list) and `offline`. Field research uses the Wikipedia API. Sites that block
+bots or have broken TLS are skipped, and a reserve company takes their place (`agent.reserve_companies`).
 
 `agent.policy: model` uses the checkpoint at `agent.checkpoint`. Until that checkpoint exists, the
 agent falls back to the deterministic `template` policy and logs that it did. This is the same
@@ -103,8 +136,11 @@ The whole pipeline on CPU in about 15 minutes (tiny 6.9 M-parameter preset, bund
 | Symptom | Fix |
 |---|---|
 | `brain: template` in the UI | No SFT checkpoint at `agent.checkpoint`: train one (§3) or point the setting at it. |
-| Telegram counter stays 0 | Set `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` (settings page or `.env`) and message the bot once first. `logs/tools.log` shows `skipped`/errors. |
-| Search finds nothing | DuckDuckGo may rate-limit: lower the request rate, use `search.provider: seedfile` with your own list, or check `errors.log`. |
+| Telegram counter stays 0 | Connect the bot on the dashboard and press Start in its chat. The card shows "Connected". Use **Send test** to check, and see `logs/tools.log` for errors. |
+| Telegram card stuck on "press Start" | Open the bot link shown and press Start (or send `/start`). If the bot has a webhook set, the app removes it automatically. |
+| Search finds nothing | Check `errors.log`. With `duckduckgo`, a bot challenge is reported as `SearchBlocked`, so switch to `wikidata` or `seedfile`. |
+| Agent keeps running after a run finishes | That is continuous mode (`agent.continuous`). Press Stop, or turn it off in Settings. |
+| `run.bat` closes immediately | Run `powershell -ExecutionPolicy Bypass -File run.ps1` in a terminal to see the error. |
 | Docx falls back to python-docx | Run `npm install` (needs Node 18+). Both backends produce the same structure. |
 | `HTTP 403` / `CONNECT tunnel failed` | Your network or proxy blocks the host; allow it or use offline providers. |
 | Stopped or crashed mid-run | Press **Start** (Resume): finished steps are reused from `outputs/cache/work/<domain>/`. **Reset** starts fresh. |

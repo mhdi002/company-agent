@@ -1,0 +1,140 @@
+# ProposalAgent configuration. Secrets live in .env (see .env.example), never here.
+# Any key can be overridden with an env var: PA__SECTION__KEY=value (double underscore = nesting).
+
+paths:
+  data_raw: data/raw
+  data_cleaned: data/cleaned
+  data_reports: data/reports
+  shards: data/shards
+  tokenizer: tokenizer/artifacts
+  checkpoints: training/checkpoints
+  logs: logs
+  proposals: outputs/proposals
+  records: outputs/records
+  state: outputs/state.json
+  cache: outputs/cache
+  docx_skill: /mnt/skills/public/docx/SKILL.md
+
+data:
+  languages: [en]           # target languages kept by the language-ID stage
+  min_chars: 200
+  max_chars: 100000
+  max_symbol_ratio: 0.10
+  max_digit_ratio: 0.15
+  max_dup_line_frac: 0.30
+  max_top_ngram_frac: 0.20
+  perplexity_max: 3000.0     # reference n-gram model perplexity cut-off
+  minhash_perm: 128
+  minhash_bands: 32
+  near_dup_threshold: 0.8
+  decontam_ngram: 13
+  val_fraction: 0.005
+  shard_tokens: 50000000
+  samples_per_stage: 100
+  seed: 1234
+
+tokenizer:
+  vocab_size: 48000
+  min_frequency: 2
+  special_tokens: ["<|pad|>", "<|bos|>", "<|eos|>", "<|unk|>", "<|step|>", "<|thought|>", "<|tool|>",
+                   "<|args|>", "<|result|>", "<|todo|>", "<|end|>", "<|conf|>", "<|user|>", "<|program|>",
+                   "<|output|>"]
+
+model:
+  preset: tiny               # tiny | small | 1b  (see model/config.py)
+  context_length: 8192
+  rope_theta: 500000.0
+  rope_scaling: 1.0          # linear position interpolation factor for context extension
+
+training:
+  device: auto               # auto | cpu | cuda
+  dtype: bf16
+  micro_batch_size: 4
+  grad_accum_steps: 8
+  seq_len: 8192
+  lr: 3.0e-4
+  min_lr: 3.0e-5
+  warmup_steps: 2000
+  max_steps: 76300            # 20B tokens / (4*8*8192 tokens per step) on 1 GPU
+  weight_decay: 0.1
+  grad_clip: 1.0
+  grad_checkpointing: true
+  eval_every: 1000
+  eval_batches: 50
+  sample_every: 2000
+  save_every: 1000
+  log_every: 10
+  seed: 1234
+  sft:
+    lr: 5.0e-5
+    max_steps: 20000
+    warmup_steps: 500
+    seq_len: 8192
+
+agent:
+  countries: ["Germany", "United Kingdom", "Canada", "Australia", "Netherlands", "Singapore"]
+  industries: ["software", "logistics", "renewable energy", "manufacturing", "healthcare", "agriculture"]
+  companies_per_run: 10
+  daily_limit: 50
+  concurrency: 2
+  policy: model              # model | template  (template = deterministic programmatic policy, used when no trained checkpoint exists)
+  checkpoint: training/checkpoints/sft/latest.pt
+  max_new_tokens: 512
+  send_logs_every: 5
+
+srlm:
+  K: 8
+  temperature: 0.8
+  top_p: 0.95
+  max_steps: 30
+  step_timeout_s: 60
+  memory_limit_mb: 512
+  max_output_chars: 4000
+  parallel: true
+  max_workers: 8
+  use_self_consistency: true
+  use_verbalized_confidence: true
+  use_trace_length: true
+  use_subcalls: false        # ablation only; OFF by default
+  direct_baseline: false     # true = plain single-pass run, no SRLM
+  free_text_agreement: keyfacts   # keyfacts | embedding
+  agreement_threshold: 0.6
+  min_score: -400.0          # retry if best s(p) below this ...
+  min_prob: 0.25             # ... AND prob(a_hat) below this
+  max_retries: 1
+  allowed_imports: [re, math, json, collections, itertools, statistics, string]
+
+search:
+  provider: duckduckgo       # duckduckgo | seedfile | offline
+  seed_file: data/sample/seed_companies.json
+  results_per_query: 10
+  timeout_s: 20
+  retries: 3
+
+fetch:
+  user_agent: "ProposalAgentBot/0.1 (+https://example.org/bot; research use)"
+  timeout_s: 20
+  retries: 3
+  min_delay_s: 2.0           # per-host politeness delay
+  max_pages_per_site: 6
+  max_bytes: 2000000
+  respect_robots: true
+  cache: true
+
+research:
+  provider: wikipedia        # wikipedia | offline
+  max_sources: 6
+
+telegram:
+  enabled: true
+  chunk_chars: 3900
+  retries: 4
+  timeout_s: 30
+
+docx:
+  backend: auto              # auto | docxjs | python-docx
+  page_size: A4
+
+app:
+  host: 127.0.0.1
+  port: 8000

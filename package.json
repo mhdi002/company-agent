@@ -1,0 +1,6 @@
+{
+  "name": "proposal-agent-docx",
+  "private": true,
+  "description": "docx-js renderer used by tools/docx_writer.py",
+  "dependencies": { "docx": "^9.0.0" }
+}

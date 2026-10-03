@@ -138,3 +138,33 @@ def recent(channel: str | None = None, status: str | None = None, company: str |
         if len(out) >= limit:
             break
     return list(reversed(out))
+
+
+def load_recent_from_files(max_lines: int = 3000) -> int:
+    """Seed the ring buffer from the tail of the JSONL logs (e.g. after a UI server restart)."""
+    if RING:
+        return 0
+    recs = []
+    for name in ("agent.jsonl", "tools.jsonl", "errors.jsonl", "training.jsonl", "srlm.jsonl"):
+        p = log_dir() / name
+        if not p.exists():
+            continue
+        with open(p, "rb") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(size - 2_000_000, 0))
+            lines = f.read().decode("utf-8", errors="replace").splitlines()[-max_lines:]
+        for line in lines:
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if name == "errors.jsonl" and rec.get("channel") != "errors":
+                continue   # mirrored error lines are already in their own channel file
+            if rec.get("step") == "srlm.step":
+                continue   # per-step prompt records are too verbose for the live view
+            recs.append(rec)
+    recs.sort(key=lambda r: r.get("timestamp", ""))
+    for r in recs[-RING.maxlen:]:
+        RING.append(r)
+    return len(recs)

@@ -112,6 +112,11 @@ class SRLMEngine:
                 elif res.error:
                     self.log.event("srlm.repl_error", "warn", details=res.error[:300], unit=task.unit_id,
                                    candidate=k)
+                if cfg.get("log_prompts", True):
+                    self.log.event("srlm.step", "info", company=task.meta.get("domain"), unit=task.unit_id, candidate=k,
+                                   attempt=attempt, t=t, prompt=prompt[-2000:], output=raw, confidence=ps.confidence,
+                                   tokens=trace.steps[-1].tokens, observation=res.observation()[:1000],
+                                   format_issues=ps.issues)
                 history.append({"text": raw.replace("<|end|>", "").strip(), "observation": res.observation()})
                 if res.has_final:
                     trace.output, trace.valid, trace.stop_reason = res.final, True, "final"

@@ -6,6 +6,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+os.environ["PA_NO_OVERRIDE"] = "1"     # tests never read the UI's config.override.yaml
 
 
 def pytest_collection_modifyitems(config, items):

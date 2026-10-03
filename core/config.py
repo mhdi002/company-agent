@@ -59,6 +59,9 @@ def load_config(path: str | Path | None = None, overrides: dict | None = None) -
     load_dotenv()
     path = Path(path) if path else ROOT / "config.yaml"
     cfg = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    local = path.with_name("config.override.yaml")     # written by the UI settings page
+    if local.exists() and not os.environ.get("PA_NO_OVERRIDE"):
+        cfg = deep_merge(cfg, yaml.safe_load(local.read_text(encoding="utf-8")) or {})
     _apply_env_overrides(cfg)
     if overrides:
         cfg = deep_merge(cfg, overrides)
@@ -76,3 +79,31 @@ def secret(name: str) -> str | None:
     load_dotenv()
     v = os.environ.get(name)
     return v or None
+
+
+def save_override(values: dict, path: Path | None = None) -> Path:
+    """Merge `values` into config.override.yaml (used by the settings page)."""
+    path = path or ROOT / "config.override.yaml"
+    cur = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
+    path.write_text(yaml.safe_dump(deep_merge(cur or {}, values), sort_keys=False), encoding="utf-8")
+    return path
+
+
+def save_env(updates: dict[str, str], path: Path | None = None) -> None:
+    """Set KEY=VALUE pairs in .env (secrets entered on the settings page). Never logged."""
+    path = path or ROOT / ".env"
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    keys = set()
+    for i, line in enumerate(lines):
+        k = line.split("=", 1)[0].strip()
+        if k in updates:
+            lines[i] = f"{k}={updates[k]}"
+            keys.add(k)
+    lines += [f"{k}={v}" for k, v in updates.items() if k not in keys]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+    for k, v in updates.items():
+        os.environ[k] = v

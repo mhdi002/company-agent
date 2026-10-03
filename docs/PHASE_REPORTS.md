@@ -55,3 +55,10 @@
 * Offline end-to-end run (template policy): 8 fixture companies → 8 `.docx` + `.json` records, gap-derived top projects, unverifiable sections marked "Not verified".
 * Fixed during this phase: double-escaped gap regex in the project programs; correlated evidence errors (BM25 matched "contract logistics" to "contract manufacturers") → evidence programs now keep only documents whose classified field matches; subset answers merging into the consistent set → separate `set_agreement_threshold: 0.8`.
 * Tests: `tests/test_agent.py` (7): full run with Telegram delivery and log sending, dedup + daily limit, per-company isolation, Telegram down, search network down, stop/resume, crash recovery without redoing completed steps.
+
+## Phase 7 — Logging
+* Channels `agent`, `tools`, `training`, `errors`, `srlm`: structured JSONL plus human lines `timestamp | run_id | company | step | tool | status | duration | details` (`srlm` is `srlm.jsonl` only). Error events (with stack traces) are mirrored to `errors.log`/`errors.jsonl`.
+* Logged: tool inputs/outputs (truncated), every model prompt/output step (`srlm.step`, `srlm.log_prompts`), retries, REPL errors and sandbox violations, to-do status transitions, run lifecycle, every SRLM decision unit (`srlm.decision`).
+* In-memory ring buffer with channel/status/company/text filters for the UI; seeded from log tails after a restart.
+* Telegram: each proposal (.docx + .json) right after it is finished, a status message after every company, log files every `agent.send_logs_every` companies and at run end.
+* Tests: `tests/test_logging.py` (4).

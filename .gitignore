@@ -21,3 +21,4 @@ training/checkpoints/*
 tokenizer/artifacts/
 *.docx
 !data/sample/*.docx
+config.override.yaml

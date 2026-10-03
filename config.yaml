@@ -103,6 +103,7 @@ srlm:
   min_score: -400.0          # retry if best s(p) below this ...
   min_prob: 0.25             # ... AND prob(a_hat) below this
   max_retries: 1
+  log_prompts: true          # log every model prompt/output step to srlm.jsonl (truncated)
   allowed_imports: [re, math, json, collections, itertools, statistics, string]
 
 search:

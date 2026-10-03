@@ -1,0 +1,27 @@
+{
+  "stage": 2,
+  "name": "langid",
+  "docs_in": 3420,
+  "docs_out": 3200,
+  "removed": 220,
+  "chars_in": 3833114,
+  "chars_out": 3706973,
+  "reasons": {
+    "kept": 3200,
+    "lang_it": 70,
+    "lang_es": 30,
+    "lang_fr": 30,
+    "lang_de": 30,
+    "lang_pt": 30,
+    "lang_nl": 30
+  },
+  "by_source_in": {
+    "sample": 3180,
+    "sample-business": 240
+  },
+  "by_source_out": {
+    "sample": 2960,
+    "sample-business": 240
+  },
+  "seconds": 1.26
+}

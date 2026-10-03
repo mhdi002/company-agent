@@ -1,0 +1,21 @@
+{
+  "stage": 1,
+  "name": "normalize",
+  "docs_in": 3420,
+  "docs_out": 3420,
+  "removed": 0,
+  "chars_in": 3842794,
+  "chars_out": 3833114,
+  "reasons": {
+    "kept": 3420
+  },
+  "by_source_in": {
+    "sample": 3180,
+    "sample-business": 240
+  },
+  "by_source_out": {
+    "sample": 3180,
+    "sample-business": 240
+  },
+  "seconds": 0.25
+}

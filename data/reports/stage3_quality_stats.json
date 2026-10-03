@@ -1,0 +1,23 @@
+{
+  "stage": 3,
+  "name": "quality",
+  "docs_in": 3200,
+  "docs_out": 3120,
+  "removed": 80,
+  "chars_in": 3706973,
+  "chars_out": 3647560,
+  "reasons": {
+    "kept": 3120,
+    "dup_lines": 40,
+    "digit_ratio": 40
+  },
+  "by_source_in": {
+    "sample": 2960,
+    "sample-business": 240
+  },
+  "by_source_out": {
+    "sample": 2880,
+    "sample-business": 240
+  },
+  "seconds": 2.13
+}

@@ -1,0 +1,141 @@
+[
+  {
+    "stage": 1,
+    "name": "normalize",
+    "docs_in": 3420,
+    "docs_out": 3420,
+    "removed": 0,
+    "chars_in": 3842794,
+    "chars_out": 3833114,
+    "reasons": {
+      "kept": 3420
+    },
+    "by_source_in": {
+      "sample": 3180,
+      "sample-business": 240
+    },
+    "by_source_out": {
+      "sample": 3180,
+      "sample-business": 240
+    },
+    "seconds": 0.25
+  },
+  {
+    "stage": 2,
+    "name": "langid",
+    "docs_in": 3420,
+    "docs_out": 3200,
+    "removed": 220,
+    "chars_in": 3833114,
+    "chars_out": 3706973,
+    "reasons": {
+      "kept": 3200,
+      "lang_it": 70,
+      "lang_es": 30,
+      "lang_fr": 30,
+      "lang_de": 30,
+      "lang_pt": 30,
+      "lang_nl": 30
+    },
+    "by_source_in": {
+      "sample": 3180,
+      "sample-business": 240
+    },
+    "by_source_out": {
+      "sample": 2960,
+      "sample-business": 240
+    },
+    "seconds": 1.26
+  },
+  {
+    "stage": 3,
+    "name": "quality",
+    "docs_in": 3200,
+    "docs_out": 3120,
+    "removed": 80,
+    "chars_in": 3706973,
+    "chars_out": 3647560,
+    "reasons": {
+      "kept": 3120,
+      "dup_lines": 40,
+      "digit_ratio": 40
+    },
+    "by_source_in": {
+      "sample": 2960,
+      "sample-business": 240
+    },
+    "by_source_out": {
+      "sample": 2880,
+      "sample-business": 240
+    },
+    "seconds": 2.13
+  },
+  {
+    "stage": 4,
+    "name": "dedup",
+    "docs_in": 3120,
+    "docs_out": 2922,
+    "removed": 198,
+    "chars_in": 3647560,
+    "chars_out": 3390274,
+    "reasons": {
+      "kept": 2922,
+      "exact_dup": 100,
+      "near_dup": 98
+    },
+    "by_source_in": {
+      "sample": 2880,
+      "sample-business": 240
+    },
+    "by_source_out": {
+      "sample": 2682,
+      "sample-business": 240
+    },
+    "seconds": 1.61
+  },
+  {
+    "stage": 5,
+    "name": "pii_toxicity",
+    "docs_in": 2922,
+    "docs_out": 2892,
+    "removed": 30,
+    "chars_in": 3390274,
+    "chars_out": 3376099,
+    "reasons": {
+      "kept": 2852,
+      "kept_scrubbed": 40,
+      "toxic": 30
+    },
+    "by_source_in": {
+      "sample": 2682,
+      "sample-business": 240
+    },
+    "by_source_out": {
+      "sample": 2652,
+      "sample-business": 240
+    },
+    "seconds": 0.29
+  },
+  {
+    "stage": 6,
+    "name": "decontam",
+    "docs_in": 2892,
+    "docs_out": 2882,
+    "removed": 10,
+    "chars_in": 3376099,
+    "chars_out": 3369644,
+    "reasons": {
+      "kept": 2882,
+      "benchmark_overlap": 10
+    },
+    "by_source_in": {
+      "sample": 2652,
+      "sample-business": 240
+    },
+    "by_source_out": {
+      "sample": 2642,
+      "sample-business": 240
+    },
+    "seconds": 0.24
+  }
+]

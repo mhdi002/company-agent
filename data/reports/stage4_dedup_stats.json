@@ -1,0 +1,23 @@
+{
+  "stage": 4,
+  "name": "dedup",
+  "docs_in": 3120,
+  "docs_out": 2922,
+  "removed": 198,
+  "chars_in": 3647560,
+  "chars_out": 3390274,
+  "reasons": {
+    "kept": 2922,
+    "exact_dup": 100,
+    "near_dup": 98
+  },
+  "by_source_in": {
+    "sample": 2880,
+    "sample-business": 240
+  },
+  "by_source_out": {
+    "sample": 2682,
+    "sample-business": 240
+  },
+  "seconds": 1.61
+}

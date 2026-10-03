@@ -1,0 +1,23 @@
+{
+  "stage": 5,
+  "name": "pii_toxicity",
+  "docs_in": 2922,
+  "docs_out": 2892,
+  "removed": 30,
+  "chars_in": 3390274,
+  "chars_out": 3376099,
+  "reasons": {
+    "kept": 2852,
+    "kept_scrubbed": 40,
+    "toxic": 30
+  },
+  "by_source_in": {
+    "sample": 2682,
+    "sample-business": 240
+  },
+  "by_source_out": {
+    "sample": 2652,
+    "sample-business": 240
+  },
+  "seconds": 0.29
+}

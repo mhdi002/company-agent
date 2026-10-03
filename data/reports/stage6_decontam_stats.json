@@ -1,0 +1,22 @@
+{
+  "stage": 6,
+  "name": "decontam",
+  "docs_in": 2892,
+  "docs_out": 2882,
+  "removed": 10,
+  "chars_in": 3376099,
+  "chars_out": 3369644,
+  "reasons": {
+    "kept": 2882,
+    "benchmark_overlap": 10
+  },
+  "by_source_in": {
+    "sample": 2652,
+    "sample-business": 240
+  },
+  "by_source_out": {
+    "sample": 2642,
+    "sample-business": 240
+  },
+  "seconds": 0.24
+}

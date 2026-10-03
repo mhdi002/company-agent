@@ -11,3 +11,4 @@ fastapi>=0.110
 uvicorn>=0.29
 pytest>=8.0
 pyarrow>=15
+defusedxml>=0.7

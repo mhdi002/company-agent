@@ -36,4 +36,4 @@ Regenerate with `python -m data.download --manifest-only`.
 
 ## Bundled sample (offline fixture)
 
-* `data/sample/` installed at 2026-10-03T18:25:26.025258+00:00: 3420 docs. Original text written for tests in this repo; used only for smoke runs, not for the real model.
+* `data/sample/` installed at 2026-10-03T18:45:30.447073+00:00: 3420 docs. Original text written for tests in this repo; used only for smoke runs, not for the real model.

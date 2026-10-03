@@ -1,0 +1,68 @@
+{
+  "policy": "model",
+  "k": 4,
+  "flawed": 1.0,
+  "companies": 12,
+  "results": {
+    "direct": {
+      "n": 12,
+      "field_accuracy": 0.5,
+      "evidence_precision": null,
+      "evidence_recall": null,
+      "project_score": null,
+      "hallucination_rate": null,
+      "completeness": null,
+      "seconds_per_company": 0.7061,
+      "low_agreement": 0,
+      "not_verified": 6
+    },
+    "+verb_conf": {
+      "n": 12,
+      "field_accuracy": 0.9167,
+      "evidence_precision": null,
+      "evidence_recall": null,
+      "project_score": null,
+      "hallucination_rate": null,
+      "completeness": null,
+      "seconds_per_company": 6.0406,
+      "low_agreement": 0,
+      "not_verified": 1
+    },
+    "+trace_len": {
+      "n": 12,
+      "field_accuracy": 0.9167,
+      "evidence_precision": null,
+      "evidence_recall": null,
+      "project_score": null,
+      "hallucination_rate": null,
+      "completeness": null,
+      "seconds_per_company": 6.0268,
+      "low_agreement": 0,
+      "not_verified": 1
+    },
+    "+self_consist": {
+      "n": 12,
+      "field_accuracy": 0.9167,
+      "evidence_precision": null,
+      "evidence_recall": null,
+      "project_score": null,
+      "hallucination_rate": null,
+      "completeness": null,
+      "seconds_per_company": 6.0297,
+      "low_agreement": 0,
+      "not_verified": 1
+    },
+    "srlm": {
+      "n": 12,
+      "field_accuracy": 0.9167,
+      "evidence_precision": null,
+      "evidence_recall": null,
+      "project_score": null,
+      "hallucination_rate": null,
+      "completeness": null,
+      "seconds_per_company": 6.0082,
+      "low_agreement": 0,
+      "not_verified": 1
+    }
+  }
+}

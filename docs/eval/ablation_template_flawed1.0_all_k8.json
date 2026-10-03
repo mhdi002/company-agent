@@ -1,0 +1,68 @@
+{
+  "policy": "template",
+  "k": 8,
+  "flawed": 1.0,
+  "companies": 30,
+  "results": {
+    "direct": {
+      "n": 30,
+      "field_accuracy": 0.9,
+      "evidence_precision": 0.9222,
+      "evidence_recall": 0.873,
+      "project_score": 0.6517,
+      "hallucination_rate": 0.0,
+      "completeness": 0.9843,
+      "seconds_per_company": 0.7783,
+      "low_agreement": 0,
+      "not_verified": 0
+    },
+    "+verb_conf": {
+      "n": 30,
+      "field_accuracy": 0.9333,
+      "evidence_precision": 0.6333,
+      "evidence_recall": 0.5289,
+      "project_score": 0.2667,
+      "hallucination_rate": 0.0,
+      "completeness": 0.9804,
+      "seconds_per_company": 2.0557,
+      "low_agreement": 0,
+      "not_verified": 0
+    },
+    "+trace_len": {
+      "n": 30,
+      "field_accuracy": 0.9333,
+      "evidence_precision": 0.6333,
+      "evidence_recall": 0.5289,
+      "project_score": 0.2667,
+      "hallucination_rate": 0.0,
+      "completeness": 0.9804,
+      "seconds_per_company": 2.2819,
+      "low_agreement": 0,
+      "not_verified": 0
+    },
+    "+self_consist": {
+      "n": 30,
+      "field_accuracy": 0.9333,
+      "evidence_precision": 1.0,
+      "evidence_recall": 0.8914,
+      "project_score": 0.7117,
+      "hallucination_rate": 0.0,
+      "completeness": 0.9843,
+      "seconds_per_company": 2.3431,
+      "low_agreement": 0,
+      "not_verified": 0
+    },
+    "srlm": {
+      "n": 30,
+      "field_accuracy": 0.9333,
+      "evidence_precision": 0.9667,
+      "evidence_recall": 0.874,
+      "project_score": 0.6383,
+      "hallucination_rate": 0.0,
+      "completeness": 0.9843,
+      "seconds_per_company": 2.203,
+      "low_agreement": 0,
+      "not_verified": 0
+    }
+  }
+}

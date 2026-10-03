@@ -67,3 +67,30 @@
 * `python -m app` → FastAPI + a single static page (`app/static/index.html`, no build step): Start/Resume, Stop, Reset; live to-do list (run item + one expandable group per company with per-step status dots); current company; counters (found, processed, failed, sent); log viewer with channel/status/company/text filters and follow mode; proposals list with .docx/.json downloads; settings page (agent, SRLM incl. all ablation switches, providers, politeness, Telegram, docx backend) saved to `config.override.yaml`, Telegram secrets saved to `.env` and never echoed back. Works at phone width.
 * Screenshots: `docs/ui_dashboard.png`, `docs/ui_logs.png` (offline run, 4 companies).
 * Tests: `tests/test_app.py` (3): start → live status → done, log filters, file download + path-traversal rejection, settings validation and secret handling, stop + reset.
+
+## Phase 9 — Evaluation and hardening
+* **End-to-end, 10 companies:** `tests/test_e2e.py::test_e2e_offline_10` runs 10 fixture companies through the whole agent (180 SRLM decision units, 10 `.docx` + 10 records, every `[S#]` citation resolves). `test_e2e_real_10` (real DuckDuckGo + websites + Wikipedia) exists but is **skipped here**: the container's network allows package registries only. Run it with `PA_NETWORK_TESTS=1 python -m pytest tests/test_e2e.py`.
+* **Failure injection:** network down (search, fetch), unreachable company site, bad HTML, Telegram 400/429/connection errors, REPL worker killed mid-program (now reported to the program, not silently reset — bug fixed), corrupt state file, timeouts, memory limit, sandbox violations.
+* **Ablations** (`training/ablation.py`, results in `docs/eval/`):
+
+Template policy with flawed programs at full weight (noisy programmatic policy), K=8, 30 held-out companies (12 fixtures + 18 synthetic):
+
+| Variant | Field acc. | Evidence P | Evidence R | Project | Halluc. | Completeness | s/company |
+|---|---|---|---|---|---|---|---|
+| direct | 0.900 | 0.922 | 0.873 | 0.652 | 0.0 | 0.984 | 0.78 |
+| +verb_conf | 0.933 | 0.633 | 0.529 | 0.267 | 0.0 | 0.980 | 2.06 |
+| +trace_len | 0.933 | 0.633 | 0.529 | 0.267 | 0.0 | 0.980 | 2.28 |
+| +self_consist | 0.933 | **1.000** | **0.891** | **0.712** | 0.0 | 0.984 | 2.34 |
+| srlm (full) | 0.933 | 0.967 | 0.874 | 0.638 | 0.0 | 0.984 | 2.20 |
+
+Our tiny SFT model (6.9 M params) writing the programs, field extraction, K=4, 12 held-out companies:
+
+| Variant | Field acc. | Not verified | s/company |
+|---|---|---|---|
+| direct | 0.500 | 6 | 0.71 |
+| +verb_conf / +trace_len / +self_consist / srlm | **0.917** | 1 | 6.0 |
+
+* Reading: search + selection gives a large gain for the model (0.50 → 0.92). Each signal alone already recovers it here because K=4 candidates rarely disagree once one succeeds. For the template policy, VC or Len alone *hurts*: its confidences are heuristic, not calibrated, so short flawed programs (one-step paraphrases, trends-only) win. Self-consistency removes them. Inside the consistent set, VC·Len still slightly prefers concise subset answers, which costs a little recall and project score versus SC alone. The paper's VC term assumes calibrated confidence; our trained model's ECE is 0.265 at smoke scale, so calibration is the main lever for the full run.
+* **Hallucination rate 0.0** by construction: every `[S#]` sentence is a verbatim quote validated against its cited source (grounding validators reject anything else). **Completeness 98.4 %** of sections verified; the rest are explicitly "Not verified".
+* **Calibration (ECE)** of the model's verbalized confidence: 0.265 (Brier 0.223) on held-out steps; training targets themselves: 0.040. See `docs/eval/eval_model.json`.
+* README written (setup, data download, training, running, troubleshooting). Full suite: **118 passed, 1 skipped (network)**.

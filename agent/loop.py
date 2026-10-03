@@ -107,6 +107,15 @@ class Agent:
             self._run_safe()
         return run_id
 
+    def reset(self) -> None:
+        """Forget the current/stopped run (keeps the processed-domain history and daily counts)."""
+        if self.running:
+            raise RuntimeError("stop the run before resetting")
+        keep = {k: self.store.data[k] for k in ("processed_domains", "daily")}
+        self.store.data = StateStore.fresh() | keep
+        self.store.save()
+        log.event("run", "reset", details="state reset; next Start begins a new run")
+
     def stop(self) -> None:
         if self.running:
             self._stop.set()

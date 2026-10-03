@@ -62,3 +62,8 @@
 * In-memory ring buffer with channel/status/company/text filters for the UI; seeded from log tails after a restart.
 * Telegram: each proposal (.docx + .json) right after it is finished, a status message after every company, log files every `agent.send_logs_every` companies and at run end.
 * Tests: `tests/test_logging.py` (4).
+
+## Phase 8 — UI
+* `python -m app` → FastAPI + a single static page (`app/static/index.html`, no build step): Start/Resume, Stop, Reset; live to-do list (run item + one expandable group per company with per-step status dots); current company; counters (found, processed, failed, sent); log viewer with channel/status/company/text filters and follow mode; proposals list with .docx/.json downloads; settings page (agent, SRLM incl. all ablation switches, providers, politeness, Telegram, docx backend) saved to `config.override.yaml`, Telegram secrets saved to `.env` and never echoed back. Works at phone width.
+* Screenshots: `docs/ui_dashboard.png`, `docs/ui_logs.png` (offline run, 4 companies).
+* Tests: `tests/test_app.py` (3): start → live status → done, log filters, file download + path-traversal rejection, settings validation and secret handling, stop + reset.

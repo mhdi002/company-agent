@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ProposalAgent</title>
+<style>
+:root{--bg:#f6f7f9;--panel:#fff;--ink:#1d2330;--muted:#667085;--line:#e4e7ec;--accent:#1f4e79;--accent-ink:#fff;
+--ok:#12805c;--ok-bg:#e6f4ee;--run:#b25e09;--run-bg:#fdf1e3;--bad:#b42318;--bad-bg:#fdecea;--idle:#475467;--idle-bg:#eef0f3;
+--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1218;--panel:#171b23;--ink:#e6e9ef;--muted:#98a2b3;--line:#2a303b;
+--accent:#6aa6e0;--accent-ink:#0f1218;--ok:#4cc38a;--ok-bg:#12261d;--run:#f0a24b;--run-bg:#2b1f10;--bad:#f97066;
+--bad-bg:#2d1513;--idle:#98a2b3;--idle-bg:#222833}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{display:flex;align-items:center;gap:16px;padding:14px 20px;background:var(--panel);border-bottom:1px solid var(--line);
+position:sticky;top:0;z-index:2;flex-wrap:wrap}
+header h1{font-size:17px;margin:0;letter-spacing:.2px}
+nav{display:flex;gap:4px;margin-left:auto;flex-wrap:wrap}
+nav button{background:none;border:0;padding:8px 12px;border-radius:8px;color:var(--muted);font:inherit;cursor:pointer}
+nav button.on{background:var(--idle-bg);color:var(--ink);font-weight:600}
+main{max-width:1180px;margin:0 auto;padding:20px 16px}
+.pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;background:var(--idle-bg);color:var(--idle)}
+.pill.done{background:var(--ok-bg);color:var(--ok)}.pill.running,.pill.in_progress,.pill.stopping{background:var(--run-bg);color:var(--run)}
+.pill.failed{background:var(--bad-bg);color:var(--bad)}
+.grid{display:grid;grid-template-columns:320px 1fr;gap:18px}
+@media(max-width:860px){.grid{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+.card h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:0 0 12px}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:9px 16px;border-radius:9px;font:inherit;
+font-weight:600;cursor:pointer}.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:14px}
+.stat{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.stat b{display:block;font-size:24px;font-variant-numeric:tabular-nums}.stat span{color:var(--muted);font-size:12px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin-top:14px;font-size:13px}.kv dt{color:var(--muted)}
+.kv dd{margin:0;overflow-wrap:anywhere}
+.todo-run{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:12px}
+details.company{border:1px solid var(--line);border-radius:10px;margin-bottom:8px;overflow:hidden}
+details.company summary{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;list-style:none}
+details.company summary::-webkit-details-marker{display:none}
+details.company summary .name{font-weight:600}.muted{color:var(--muted)}
+.steps{list-style:none;margin:0;padding:0 12px 10px}
+.steps li{display:flex;align-items:center;gap:10px;padding:5px 0;border-top:1px dashed var(--line);font-size:13px}
+.dot{width:10px;height:10px;border-radius:50%;flex:none;background:var(--idle-bg);border:2px solid var(--idle)}
+.dot.done{background:var(--ok);border-color:var(--ok)}.dot.in_progress{background:var(--run);border-color:var(--run);animation:p 1s infinite}
+.dot.failed{background:var(--bad);border-color:var(--bad)}.dot.skipped{border-style:dashed}
+@keyframes p{50%{opacity:.35}}
+.err{color:var(--bad);font-size:12px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+input,select{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+.logs{font-family:var(--mono);font-size:12px;max-height:68vh;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.logs table{border-collapse:collapse;width:100%}.logs td{padding:4px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+.logs tr.error td{background:var(--bad-bg)}.logs td.d{white-space:pre-wrap;overflow-wrap:anywhere}
+.logs td.t{white-space:nowrap;color:var(--muted)}
+.form{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.form label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+.form label.chk{flex-direction:row;align-items:center;gap:8px;color:var(--ink);font-size:13px}
+fieldset{border:1px solid var(--line);border-radius:12px;padding:14px;margin:0 0 14px}
+legend{padding:0 6px;font-weight:600}
+.files a{color:var(--accent);text-decoration:none}.files li{padding:4px 0}
+.toast{position:fixed;bottom:16px;right:16px;background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:10px;display:none}
+.hidden{display:none}
+@media(max-width:600px){details.company summary .muted{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1>ProposalAgent</h1>
+  <span id="runPill" class="pill">idle</span>
+  <span class="muted" id="policy"></span>
+  <nav>
+    <button data-tab="dash" class="on">Dashboard</button>
+    <button data-tab="logs">Logs</button>
+    <button data-tab="files">Proposals</button>
+    <button data-tab="settings">Settings</button>
+  </nav>
+</header>
+<main>
+  <section id="tab-dash" class="grid">
+    <div>
+      <div class="card">
+        <h2>Run</h2>
+        <div class="btns">
+          <button class="btn primary" id="startBtn">Start</button>
+          <button class="btn" id="stopBtn">Stop</button>
+          <button class="btn" id="resetBtn" title="Forget the stopped run and start fresh next time">Reset</button>
+        </div>
+        <div class="stats">
+          <div class="stat"><b id="cFound">0</b><span>found</span></div>
+          <div class="stat"><b id="cProcessed">0</b><span>processed</span></div>
+          <div class="stat"><b id="cFailed">0</b><span>failed</span></div>
+          <div class="stat"><b id="cSent">0</b><span>sent to Telegram</span></div>
+        </div>
+        <dl class="kv">
+          <dt>Current</dt><dd id="current">—</dd>
+          <dt>Run id</dt><dd id="runId">—</dd>
+          <dt>Today</dt><dd id="today">0 processed</dd>
+        </dl>
+      </div>
+    </div>
+    <div class="card">
+      <h2>To-do list</h2>
+      <div id="todo"><p class="muted">Press Start to build the to-do list.</p></div>
+    </div>
+  </section>
+
+  <section id="tab-logs" class="card hidden">
+    <div class="filters">
+      <select id="fChannel"><option value="">all channels</option><option>agent</option><option>tools</option>
+        <option>srlm</option><option>training</option></select>
+      <select id="fStatus"><option value="">any status</option><option>error</option><option>warn</option>
+        <option>retry</option><option>done</option><option>ok</option><option>in_progress</option></select>
+      <input id="fCompany" placeholder="company / domain">
+      <input id="fText" placeholder="search text">
+      <label class="muted"><input type="checkbox" id="fFollow" checked> follow</label>
+    </div>
+    <div class="logs" id="logBox"><table><tbody id="logRows"></tbody></table></div>
+  </section>
+
+  <section id="tab-files" class="card hidden">
+    <h2>Proposals</h2>
+    <ul class="files" id="fileList"></ul>
+  </section>
+
+  <section id="tab-settings" class="hidden">
+    <form id="settingsForm"></form>
+    <div class="btns"><button class="btn primary" id="saveBtn">Save settings</button></div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const toast = (m) => { const t = $("toast"); t.textContent = m; t.style.display = "block"; setTimeout(() => t.style.display = "none", 2600); };
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) { const b = await r.json().catch(() => ({})); throw new Error(b.detail || r.statusText); }
+  return r.json();
+}
+let tab = "dash";
+document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
+  tab = b.dataset.tab;
+  document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("on", x === b));
+  ["dash", "logs", "files", "settings"].forEach((t) => $("tab-" + t).classList.toggle("hidden", t !== tab));
+  if (tab === "files") loadFiles();
+  if (tab === "settings") loadSettings();
+  if (tab === "logs") loadLogs();
+});
+
+const open = new Set();
+function renderTodo(s) {
+  const run = s.todo.find((i) => !i.company);
+  const byCo = {};
+  s.todo.filter((i) => i.company).forEach((i) => (byCo[i.company] ||= []).push(i));
+  let h = "";
+  if (run) h += `<div class="todo-run"><span class="dot ${run.status}"></span><b>1.</b> ${esc(run.title)}
+    <span class="pill ${run.status}" style="margin-left:auto">${run.status}</span></div>`;
+  for (const [d, items] of Object.entries(byCo)) {
+    const co = s.companies[d] || {};
+    const isOpen = open.has(d) || co.status === "in_progress";
+    h += `<details class="company" data-d="${esc(d)}" ${isOpen ? "open" : ""}><summary>
+      <span class="dot ${co.status}"></span><span class="name">${esc(co.name || d)}</span>
+      <span class="muted">${esc(d)}</span><span class="pill ${co.status}" style="margin-left:auto">${co.status}</span></summary>
+      <ul class="steps">${items.map((i) => `<li><span class="dot ${i.status}"></span><b>${i.n}.</b> ${esc(i.title)}
+      ${i.error ? `<span class="err">— ${esc(i.error)}</span>` : ""}</li>`).join("")}</ul>
+      ${co.error ? `<div class="err" style="padding:0 12px 10px">${esc(co.error)}</div>` : ""}</details>`;
+  }
+  $("todo").innerHTML = h || '<p class="muted">Press Start to build the to-do list.</p>';
+  $("todo").querySelectorAll("details").forEach((el) => el.addEventListener("toggle", () =>
+    el.open ? open.add(el.dataset.d) : open.delete(el.dataset.d)));
+}
+
+async function refresh() {
+  try {
+    const s = await api("/api/status");
+    const st = s.running ? (s.status === "stopping" ? "stopping" : "running") : (s.status || "idle");
+    $("runPill").textContent = st; $("runPill").className = "pill " + st;
+    $("policy").textContent = "brain: " + s.policy;
+    $("cFound").textContent = s.counters.found; $("cProcessed").textContent = s.counters.processed;
+    $("cFailed").textContent = s.counters.failed; $("cSent").textContent = s.counters.sent;
+    $("current").textContent = s.current_company || "—"; $("runId").textContent = s.run_id || "—";
+    $("today").textContent = s.processed_today + " processed";
+    $("startBtn").disabled = s.running; $("stopBtn").disabled = !s.running; $("resetBtn").disabled = s.running;
+    $("startBtn").textContent = !s.running && ["stopped", "stopping"].includes(s.status) ? "Resume" : "Start";
+    if (tab === "dash") renderTodo(s);
+  } catch (e) { $("runPill").textContent = "offline"; }
+}
+$("startBtn").onclick = async () => { await api("/api/start", {method: "POST"}); toast("Run started"); refresh(); };
+$("stopBtn").onclick = async () => { await api("/api/stop", {method: "POST"}); toast("Stopping after the current step"); refresh(); };
+$("resetBtn").onclick = async () => { try { await api("/api/reset", {method: "POST"}); toast("Reset"); refresh(); } catch (e) { toast(e.message); } };
+
+async function loadLogs() {
+  const q = new URLSearchParams({channel: $("fChannel").value, status: $("fStatus").value,
+    company: $("fCompany").value, q: $("fText").value, limit: 500});
+  const rows = await api("/api/logs?" + q);
+  $("logRows").innerHTML = rows.map((r) => `<tr class="${r.status === "error" ? "error" : ""}">
+    <td class="t">${esc((r.timestamp || "").slice(11, 23))}</td><td>${esc(r.channel)}</td><td>${esc(r.company || "")}</td>
+    <td>${esc(r.step)}</td><td>${esc(r.tool || "")}</td><td>${esc(r.status)}</td>
+    <td class="t">${r.duration != null ? r.duration.toFixed(2) + "s" : ""}</td>
+    <td class="d">${esc(typeof r.details === "string" ? r.details : JSON.stringify(r.details))}</td></tr>`).join("");
+  if ($("fFollow").checked) $("logBox").scrollTop = $("logBox").scrollHeight;
+}
+["fChannel", "fStatus", "fCompany", "fText"].forEach((id) => $(id).addEventListener("input", loadLogs));
+
+async function loadFiles() {
+  const f = await api("/api/files");
+  const recs = new Set(f.records);
+  $("fileList").innerHTML = f.proposals.map((n) => {
+    const rec = n.replace(/\.docx$/, ".json");
+    return `<li><a href="/api/files/proposals/${encodeURIComponent(n)}">${esc(n)}</a>
+      ${recs.has(rec) ? ` · <a href="/api/files/records/${encodeURIComponent(rec)}">record</a>` : ""}</li>`;
+  }).join("") || '<li class="muted">No proposals yet.</li>';
+}
+
+let settings = null;
+async function loadSettings() {
+  settings = await api("/api/settings");
+  let h = "";
+  for (const [sec, vals] of Object.entries(settings)) {
+    if (sec === "secrets") continue;
+    h += `<fieldset><legend>${sec}</legend><div class="form">`;
+    for (const [k, v] of Object.entries(vals)) {
+      const id = `${sec}.${k}`;
+      if (typeof v === "boolean") h += `<label class="chk"><input type="checkbox" name="${id}" ${v ? "checked" : ""}> ${k}</label>`;
+      else if (k === "provider" && sec === "search") h += sel(id, k, v, ["duckduckgo", "seedfile", "offline"]);
+      else if (k === "provider" && sec === "research") h += sel(id, k, v, ["wikipedia", "offline"]);
+      else if (k === "policy") h += sel(id, k, v, ["model", "template"]);
+      else if (k === "backend") h += sel(id, k, v, ["auto", "docxjs", "python-docx"]);
+      else h += `<label>${k}<input name="${id}" value="${esc(Array.isArray(v) ? v.join(", ") : v)}"></label>`;
+    }
+    h += "</div></fieldset>";
+  }
+  h += `<fieldset><legend>telegram secrets</legend><div class="form">
+    <label>bot token ${settings.secrets.telegram_configured ? "(configured)" : "(not set)"}<input name="secrets.telegram_token" type="password" placeholder="leave empty to keep"></label>
+    <label>chat id<input name="secrets.telegram_chat_id" placeholder="leave empty to keep"></label></div></fieldset>`;
+  $("settingsForm").innerHTML = h;
+}
+const sel = (id, k, v, opts) => `<label>${k}<select name="${id}">${opts.map((o) =>
+  `<option ${o === v ? "selected" : ""}>${o}</option>`).join("")}</select></label>`;
+$("saveBtn").onclick = async (e) => {
+  e.preventDefault();
+  const body = {};
+  $("settingsForm").querySelectorAll("input,select").forEach((el) => {
+    const [sec, k] = el.name.split(".");
+    const v = el.type === "checkbox" ? el.checked : el.value;
+    if (sec === "secrets" && !v) return;
+    (body[sec] ||= {})[k] = v;
+  });
+  try { await api("/api/settings", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    toast("Settings saved"); loadSettings(); } catch (err) { toast(err.message); }
+};
+refresh(); setInterval(refresh, 1500);
+setInterval(() => { if (tab === "logs") loadLogs(); }, 2000);
+</script>
+</body>
+</html>
